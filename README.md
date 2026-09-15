@@ -1,7 +1,7 @@
 # Trading-Discipline-App
 A full-stack web application designed as a psychological intervention tool for financial day-traders — helping them recognise and interrupt impulsive decision-making before it costs them money.
 
-**Status:** 🔨 In active development — core features functional, UI and analytics being refined.
+**Status:** 🔨 In active development core features functional, UI and analytics being refined.
 
 ## The Problem
 
