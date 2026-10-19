@@ -18,17 +18,20 @@ const protect = async (req, res, next) => {
             // 4. Find the user in the database and attach them to the request (minus the password)
             req.user = await User.findById(decoded.id).select('-password');
 
+            // Guard against a valid token for a user who no longer exists
+            if (!req.user) {
+                return res.status(401).json({ message: 'Not authorized, user not found' });
+            }
+
             // 5. The token is valid! Let them pass through to the controller
-            next();
+            return next();
         } catch (error) {
             console.error("Token Verification Failed:", error.message);
-            res.status(401).json({ message: 'Not authorized, token failed' });
+            return res.status(401).json({ message: 'Not authorized, token failed' });
         }
     }
 
-    if (!token) {
-        res.status(401).json({ message: 'Not authorized, no token provided' });
-    }
+    return res.status(401).json({ message: 'Not authorized, no token provided' });
 };
 
 module.exports = { protect };

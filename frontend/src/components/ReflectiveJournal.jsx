@@ -30,7 +30,11 @@ export function ReflectiveJournal({ trades, userId, onTradeLogged }) {
         riskPercentage: 1
       };
 
-      await axios.post('http://localhost:5000/api/trades', payload);
+      // Attach the JWT — POST /api/trades is a protected route
+      const token = JSON.parse(localStorage.getItem('user'))?.token;
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+
+      await axios.post('http://localhost:5000/api/trades', payload, config);
       alert("Trade Logged Successfully");
       setShowForm(false);
       onTradeLogged(); 
