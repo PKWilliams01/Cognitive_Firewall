@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Lock, LockOpen, AlertTriangle, Settings2, Hash, Activity } from 'lucide-react';
 import axios from 'axios';
 import PageWrapper from './PageWrapper';
+import API_BASE from '../config';
 
 export default function StrategySettings({ user, onUpdate }) {
   const [isLocked, setIsLocked] = useState(true);
@@ -65,7 +66,7 @@ export default function StrategySettings({ user, onUpdate }) {
       // Attach the JWT — PUT /api/users/:id is now a protected route
       const token = JSON.parse(localStorage.getItem('user'))?.token;
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await axios.put(`http://localhost:5000/api/users/${user._id}`, {
+      const res = await axios.put(`${API_BASE}/api/users/${user._id}`, {
         tradingPlanRules: ruleStrings,
         plannedDailyLimit: parseInt(dailyLimit)
       }, config);

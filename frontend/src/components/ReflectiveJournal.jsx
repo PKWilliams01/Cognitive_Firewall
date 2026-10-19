@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { FileText, TrendingUp, TrendingDown, Calendar } from 'lucide-react';
 import axios from 'axios';
 import PageWrapper from './PageWrapper';
+import API_BASE from '../config';
 
 export function ReflectiveJournal({ trades, userId, onTradeLogged }) {
   const [showForm, setShowForm] = useState(false);
@@ -34,7 +35,7 @@ export function ReflectiveJournal({ trades, userId, onTradeLogged }) {
       const token = JSON.parse(localStorage.getItem('user'))?.token;
       const config = { headers: { Authorization: `Bearer ${token}` } };
 
-      await axios.post('http://localhost:5000/api/trades', payload, config);
+      await axios.post(`${API_BASE}/api/trades`, payload, config);
       alert("Trade Logged Successfully");
       setShowForm(false);
       onTradeLogged(); 

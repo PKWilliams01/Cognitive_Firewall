@@ -1,9 +1,10 @@
 import axios from 'axios';
+import API_BASE from '../config';
 
 // 1. FETCH RAW DATA FROM BACKEND
 export const getUserMetrics = async (userId) => {
     try {
-        const response = await axios.get(`http://localhost:5000/api/trades/metrics/${userId}`);
+        const response = await axios.get(`${API_BASE}/api/trades/metrics/${userId}`);
         return response.data; // Returns { disciplineScore: 50, overtradingIndex: 1.5, ... }
     } catch (error) {
         console.error("Error fetching metrics:", error);

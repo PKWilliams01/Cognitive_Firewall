@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { AlertTriangle, ShieldCheck, Activity, Lock } from 'lucide-react';
+import API_BASE from '../config';
 
 // Added revengeRisk to the props
 const TradeExecutionWizard = ({ userId, onTradeSuccess, user, onClose, revengeRisk = 0 }) => {
@@ -43,7 +44,7 @@ const TradeExecutionWizard = ({ userId, onTradeSuccess, user, onClose, revengeRi
                 };
 
                 // 3. Pass the config as the second argument to axios.get!
-                const res = await axios.get(`http://localhost:5000/api/trades/user/${user._id}`, config);
+                const res = await axios.get(`${API_BASE}/api/trades/user/${user._id}`, config);
                 
                 const todayStr = new Date().toDateString();
                 const count = res.data.filter(t => new Date(t.entryTime || t.timestamp).toDateString() === todayStr).length;
@@ -131,7 +132,7 @@ const TradeExecutionWizard = ({ userId, onTradeSuccess, user, onClose, revengeRi
     };
 
     try {
-        await axios.post('http://localhost:5000/api/trades', tradeData, config);
+        await axios.post(`${API_BASE}/api/trades`, tradeData, config);
         
         if (onTradeSuccess) onTradeSuccess(); 
         if (onClose) onClose();              
