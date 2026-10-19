@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../Models/User');
 
-const JWT_SECRET = "cognitive_firewall_super_secret_key_2026"; 
+const JWT_SECRET = process.env.JWT_SECRET || "cognitive_firewall_super_secret_key_2026";
 
 const protect = async (req, res, next) => {
     let token;

@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 // A secret key for signing tokens (goes in a .env file!)
-const JWT_SECRET = "cognitive_firewall_super_secret_key_2026";
+const JWT_SECRET = process.env.JWT_SECRET || "cognitive_firewall_super_secret_key_2026";
 
 // Helper function to generate the token
 const generateToken = (id) => {
