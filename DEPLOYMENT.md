@@ -38,10 +38,14 @@ Follow the steps in order; the pieces reference each other's URLs.
 ## 3. Vercel (frontend)
 
 1. Vercel → **Add New → Project** → import this repo.
-2. **Root Directory → `frontend`** (important — the repo is a monorepo).
-3. Framework preset auto-detects Create React App (confirmed by `frontend/vercel.json`).
-4. Add an Environment Variable:
-   - `REACT_APP_API_URL` → the backend URL from step 2 (e.g. `https://cognitive-firewall-api.onrender.com`)
+2. **Leave Root Directory at the repository root** (the default). The root
+   `vercel.json` handles the monorepo: it installs and builds inside
+   `frontend/` and serves `frontend/build`. Do **not** set Root Directory to
+   `frontend` — the root `vercel.json` does the directory switch itself.
+3. Framework Preset: **Other** (the root `vercel.json` defines the build).
+4. Add an Environment Variable (Key / Value — don't paste the URL into the Key box):
+   - Key: `REACT_APP_API_URL`
+   - Value: the backend URL from step 2 (e.g. `https://cognitive-firewall-api.onrender.com`)
 5. Deploy. Note the frontend URL, e.g. `https://cognitive-firewall.vercel.app`.
 
 ## 4. Close the CORS loop
@@ -65,5 +69,5 @@ Follow the steps in order; the pieces reference each other's URLs.
 ## Redeploys
 
 Both platforms redeploy automatically on push to `main`. The Vercel project
-should keep **Root Directory = `frontend`**; the Render service tracks the
-repo root and uses `render.yaml`.
+builds from the **repository root** using the root `vercel.json`; the Render
+service also tracks the repo root and uses `render.yaml`.
