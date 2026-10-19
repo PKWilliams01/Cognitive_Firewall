@@ -1,0 +1,185 @@
+/* =========================================================================
+   Cognitive Firewall — design system ("pro trading terminal")
+   Single source of truth for colour, type, spacing, motion.
+   ========================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  /* Surfaces (darkest -> lightest) */
+  --bg: #06080c;
+  --bg-elev: #0b0f15;
+  --surface: #10151d;
+  --surface-2: #151b25;
+  --surface-3: #1b2330;
+
+  /* Lines */
+  --border: #1e2632;
+  --border-strong: #2b3545;
+
+  /* Text */
+  --text-main: #e6edf3;
+  --text-muted: #7d8a9c;
+  --text-dim: #4d5866;
+
+  /* Signal colours */
+  --primary: #00e5a0;          /* profit / go */
+  --primary-soft: rgba(0, 229, 160, 0.12);
+  --accent: #7c5cff;           /* brand violet */
+  --accent-soft: rgba(124, 92, 255, 0.14);
+  --danger: #ff4d6d;           /* loss / lock */
+  --danger-soft: rgba(255, 77, 109, 0.12);
+  --warning: #ffb547;          /* caution */
+  --warning-soft: rgba(255, 181, 71, 0.12);
+  --info: #38bdf8;
+
+  /* Type */
+  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+
+  /* Shape & depth */
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 16px 40px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 24px 70px rgba(0, 0, 0, 0.6);
+  --glow-primary: 0 0 0 1px rgba(0, 229, 160, 0.35), 0 0 28px rgba(0, 229, 160, 0.25);
+  --glow-accent: 0 0 0 1px rgba(124, 92, 255, 0.4), 0 0 32px rgba(124, 92, 255, 0.28);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 140ms;
+  --dur: 240ms;
+
+  /* Legacy aliases — keep older components rendering in the new palette */
+  --background: var(--bg-elev);
+  --bg-main: var(--bg);
+  --bg-card: var(--surface);
+  --card: var(--surface);
+  --border-subtle: var(--border);
+  --text: var(--text-main);
+  --muted: var(--text-muted);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--text-main);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+::selection {
+  background: var(--primary);
+  color: #00140d;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 10px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+
+/* Focus ring — visible, on-brand */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ---------- Shared utilities ---------- */
+
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.text-up { color: var(--primary); }
+.text-down { color: var(--danger); }
+
+/* Terminal grid backdrop */
+.grid-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse at 50% 30%, #000 30%, transparent 75%);
+}
+
+.glow-orb {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(90px);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.55;
+  animation: orb-drift 18s var(--ease-out) infinite alternate;
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 0 rgba(0, 229, 160, 0.6);
+  animation: pulse-ring 1.8s infinite;
+  flex-shrink: 0;
+}
+
+/* ---------- Keyframes ---------- */
+
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(0, 229, 160, 0.55); }
+  70%  { box-shadow: 0 0 0 9px rgba(0, 229, 160, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 229, 160, 0); }
+}
+
+@keyframes orb-drift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(40px, -30px, 0) scale(1.12); }
+}
+
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+@keyframes shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(3px); }
+  30%, 50%, 70% { transform: translateX(-5px); }
+  40%, 60% { transform: translateX(5px); }
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Respect reduced-motion preferences everywhere */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

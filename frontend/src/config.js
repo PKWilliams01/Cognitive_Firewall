@@ -5,4 +5,8 @@
 // nothing changes for local development.
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
+// OAuth client ID for "Continue with Google". When unset, the Google button
+// renders disabled instead of failing.
+export const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || '';
+
 export default API_BASE;

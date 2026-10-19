@@ -26,3 +26,6 @@ services:
         sync: false
       - key: CLIENT_URL
         sync: false
+      # Optional: enables "Continue with Google" (see DEPLOYMENT.md step 5)
+      - key: GOOGLE_CLIENT_ID
+        sync: false

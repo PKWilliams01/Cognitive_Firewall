@@ -19,6 +19,7 @@ function App() {
   const [tradeHistory, setTradeHistory] = useState([]);
   const [metrics, setMetrics] = useState(null);
   const [authStage, setAuthStage] = useState('welcome'); // 'welcome' | 'login'
+  const [authMode, setAuthMode] = useState('login'); // which tab the auth screen opens on
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -73,9 +74,23 @@ function App() {
   // --- AUTH FLOW: Welcome -> Login ---
   if (!user) {
     if (authStage === 'welcome') {
-      return <Welcome onContinue={() => setAuthStage('login')} />;
+      return (
+        <Welcome
+          onContinue={(mode = 'login') => {
+            setAuthMode(mode);
+            setAuthStage('login');
+          }}
+        />
+      );
     }
-    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+    return (
+      <LoginScreen
+        key={authMode}
+        initialMode={authMode}
+        onLoginSuccess={handleLoginSuccess}
+        onBack={() => setAuthStage('welcome')}
+      />
+    );
   }
 
   return (

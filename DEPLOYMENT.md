@@ -54,17 +54,43 @@ Follow the steps in order; the pieces reference each other's URLs.
    - `CLIENT_URL` → the Vercel frontend URL from step 3
 2. Save (Render redeploys). This lets the backend accept browser requests from the deployed frontend.
 
+## 5. Google sign-in (optional)
+
+"Continue with Google" stays visible but disabled until this is configured.
+
+1. Google Cloud Console → **APIs & Services → OAuth consent screen**: choose
+   **External**, fill in the app name and support email, and publish it (or
+   add yourself as a test user while it's in Testing).
+2. **APIs & Services → Credentials → Create credentials → OAuth client ID**:
+   - Application type: **Web application**
+   - **Authorised JavaScript origins**: add every URL the frontend is served
+     from, e.g. `http://localhost:3000` and your Vercel production URL.
+     (No redirect URIs are needed — sign-in uses Google's popup.)
+3. Copy the **Client ID** (`…apps.googleusercontent.com`) and set it in both places:
+   - Render → `GOOGLE_CLIENT_ID`
+   - Vercel → `REACT_APP_GOOGLE_CLIENT_ID` (then redeploy so it's baked into the build)
+
+The client ID is public by design; there is no client secret in this flow.
+The backend verifies every Google ID token against `GOOGLE_CLIENT_ID` before
+signing anyone in.
+
+> Google only allows origins you list explicitly, so per-deployment Vercel
+> preview URLs won't show a working Google button — test Google sign-in on the
+> production URL (or localhost).
+
 ---
 
 ## Environment variable summary
 
-| Variable            | Where set        | Value                                            |
-|---------------------|------------------|--------------------------------------------------|
-| `MONGO_URI`         | Render           | Atlas connection string                          |
-| `JWT_SECRET`        | Render           | auto-generated                                   |
-| `CLIENT_URL`        | Render           | the Vercel frontend origin                       |
-| `NODE_ENV`          | Render           | `production` (from `render.yaml`)                |
-| `REACT_APP_API_URL` | Vercel           | the Render backend origin                        |
+| Variable                     | Where set | Value                                     |
+|------------------------------|-----------|-------------------------------------------|
+| `MONGO_URI`                  | Render    | Atlas connection string                   |
+| `JWT_SECRET`                 | Render    | auto-generated                            |
+| `CLIENT_URL`                 | Render    | the Vercel frontend origin                |
+| `NODE_ENV`                   | Render    | `production` (from `render.yaml`)         |
+| `GOOGLE_CLIENT_ID`           | Render    | Google OAuth client ID (optional)         |
+| `REACT_APP_API_URL`          | Vercel    | the Render backend origin                 |
+| `REACT_APP_GOOGLE_CLIENT_ID` | Vercel    | same Google OAuth client ID (optional)    |
 
 ## Redeploys
 
