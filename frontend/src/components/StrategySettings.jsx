@@ -62,10 +62,13 @@ export default function StrategySettings({ user, onUpdate }) {
     setLoading(true);
     try {
       const ruleStrings = rules.map(r => r.fullString);
+      // Attach the JWT — PUT /api/users/:id is now a protected route
+      const token = JSON.parse(localStorage.getItem('user'))?.token;
+      const config = { headers: { Authorization: `Bearer ${token}` } };
       const res = await axios.put(`http://localhost:5000/api/users/${user._id}`, {
         tradingPlanRules: ruleStrings,
         plannedDailyLimit: parseInt(dailyLimit)
-      });
+      }, config);
 
       onUpdate(res.data);
       localStorage.setItem('user', JSON.stringify(res.data));

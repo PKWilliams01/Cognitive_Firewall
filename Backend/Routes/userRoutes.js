@@ -3,6 +3,7 @@ const router = express.Router();
 const User = require('../Models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { protect } = require('../Middleware/authMiddleware');
 
 // A secret key for signing tokens (In a real app, this goes in a .env file)
 const JWT_SECRET = process.env.JWT_SECRET || "cognitive_firewall_super_secret_key_2026";
@@ -80,12 +81,23 @@ router.post('/login', async (req, res) => {
 
 // 3. UPDATE USER SETTINGS ROUTE
 // Endpoint: PUT http://localhost:5000/api/users/:id
-router.put('/:id', async (req, res) => {
+router.put('/:id', protect, async (req, res) => {
   try {
+    // Ownership: a user may only update their own record
+    if (req.user._id.toString() !== req.params.id) {
+      return res.status(403).json({ message: 'Not authorized to update this user' });
+    }
+
+    // Whitelist updatable fields — never let the client mass-assign
+    // password, email, _id, or any other field via the request body.
+    const allowed = {};
+    if (req.body.plannedDailyLimit !== undefined) allowed.plannedDailyLimit = req.body.plannedDailyLimit;
+    if (req.body.tradingPlanRules !== undefined) allowed.tradingPlanRules = req.body.tradingPlanRules;
+
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
-      req.body,
-      { new: true }
+      allowed,
+      { new: true, runValidators: true }
     );
 
     if (!updatedUser) {
