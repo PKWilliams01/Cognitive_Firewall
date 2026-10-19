@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { Brain, ArrowRight, Lock, Mail, AlertCircle } from 'lucide-react';
 import './LoginScreen.css';
+import API_BASE from '../config';
 
 export default function LoginScreen({ onLoginSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -15,8 +16,8 @@ export default function LoginScreen({ onLoginSuccess }) {
     setLoading(true);
 
     const endpoint = isLogin
-      ? 'http://localhost:5000/api/users/login'
-      : 'http://localhost:5000/api/users/register';
+      ? `${API_BASE}/api/users/login`
+      : `${API_BASE}/api/users/register`;
 
     try {
       const res = await axios.post(endpoint, formData);

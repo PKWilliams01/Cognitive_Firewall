@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import './App.css'; 
+import './App.css';
+import API_BASE from './config';
 import { Brain, LayoutDashboard, BookOpen, Settings, LogOut, Zap, HelpCircle } from 'lucide-react';
 import Welcome from './pages/Welcome';
 import LoginScreen from './components/LoginScreen';
@@ -44,8 +45,8 @@ function App() {
     try {
       const [tradesRes, metricsRes] = await Promise.all([
         // ADD `, config` to the end of both of these lines!
-        axios.get(`http://localhost:5000/api/trades/user/${userId}`, config),
-        axios.get(`http://localhost:5000/api/trades/metrics/${userId}`, config)
+        axios.get(`${API_BASE}/api/trades/user/${userId}`, config),
+        axios.get(`${API_BASE}/api/trades/metrics/${userId}`, config)
       ]);
       setTradeHistory(tradesRes.data || []); 
       setMetrics(metricsRes.data || {});
