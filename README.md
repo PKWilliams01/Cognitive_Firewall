@@ -81,6 +81,13 @@ dedicated `cognitive_firewall_test` database (created and dropped
 automatically), so they never touch development or production data. A
 local MongoDB instance must be running.
 
+## Deployment
+
+The app deploys with the frontend on **Vercel** and the backend (Express +
+MongoDB) on **Render** with the database on **MongoDB Atlas**. Config lives in
+`frontend/vercel.json` and `render.yaml`; see **[DEPLOYMENT.md](DEPLOYMENT.md)**
+for the full step-by-step.
+
 ## Background
 
 This was my final year project for BSc Computer Science (Software Engineering) at Brunel University London (2025–2026). The concept came directly from personal experience as a trader — I'd been through prop firm challenges, taken a payout, and watched the same emotional patterns derail sessions over and over. I built the tool I wished existed.

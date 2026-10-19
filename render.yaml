@@ -1,0 +1,28 @@
+# Render Blueprint for the Cognitive Firewall backend (Express + MongoDB).
+# Deploy: Render Dashboard -> New -> Blueprint -> connect this repo.
+# Render reads this file and provisions the service below.
+#
+# You must set the two `sync: false` secrets in the Render dashboard after
+# the first deploy:
+#   MONGO_URI  - your MongoDB Atlas connection string
+#   CLIENT_URL - the deployed frontend origin (e.g. https://your-app.vercel.app)
+services:
+  - type: web
+    name: cognitive-firewall-api
+    runtime: node
+    rootDir: Backend
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Render generates a strong random secret and keeps it stable.
+      - key: JWT_SECRET
+        generateValue: true
+      # Set these in the dashboard (not stored in the repo).
+      - key: MONGO_URI
+        sync: false
+      - key: CLIENT_URL
+        sync: false
