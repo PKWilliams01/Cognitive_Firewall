@@ -17,12 +17,23 @@ const app = express();
 // --- SECURITY & CORE MIDDLEWARE ---
 app.use(helmet()); // Secure HTTP response headers
 
-// Restrict CORS to the known client origin(s). Set CLIENT_URL in the
-// environment for production; defaults to the local dev frontend.
-const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:3000")
+// Restrict CORS to known client origins:
+//  - explicit list from CLIENT_URL (comma-separated) for local dev and any
+//    custom/production domains
+//  - plus a pattern matching this project's Vercel deployments, whose
+//    subdomain changes per deploy and per branch (production + previews),
+//    so we don't have to chase a new URL on every deployment.
+const explicitOrigins = (process.env.CLIENT_URL || "http://localhost:3000")
   .split(",")
-  .map(o => o.trim());
-app.use(cors({ origin: allowedOrigins, credentials: true }));
+  .map(o => o.trim())
+  .filter(Boolean);
+
+const vercelDeployPattern = /^https:\/\/cognitive-firewall[a-z0-9-]*\.vercel\.app$/;
+
+app.use(cors({
+  origin: [...explicitOrigins, vercelDeployPattern],
+  credentials: true
+}));
 
 app.use(express.json());
 
