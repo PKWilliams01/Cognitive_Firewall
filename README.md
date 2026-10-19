@@ -56,14 +56,30 @@ cd Backend && npm install
 cd ../frontend && npm install
 
 # Set up environment variables
-# Create a .env file in /Backend with:
-#   MONGO_URI=your_mongodb_connection_string
-#   PORT=5000
+# Copy the example env files and fill them in:
+#   Backend/.env.example  -> Backend/.env   (MONGO_URI, PORT, JWT_SECRET, CLIENT_URL)
+#   frontend/.env.example -> frontend/.env  (REACT_APP_API_URL)
 
 # Run both servers
 cd ../Backend && npm run dev    # Backend on :5000
 cd ../frontend && npm start     # Frontend on :3000
 ```
+
+## Testing
+
+The backend has an automated test suite (Jest + Supertest):
+
+```bash
+cd Backend && npm test
+```
+
+It covers the behavioural metrics engine (discipline score, revenge-risk
+heat algorithm, impulsivity index) as unit tests, and the API's
+authentication and authorization — including the per-user data isolation
+(IDOR) guards — as integration tests. The integration tests run against a
+dedicated `cognitive_firewall_test` database (created and dropped
+automatically), so they never touch development or production data. A
+local MongoDB instance must be running.
 
 ## Background
 
