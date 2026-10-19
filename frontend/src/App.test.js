@@ -1,8 +1,16 @@
 import { render, screen } from '@testing-library/react';
+import axios from 'axios';
 import App from './App';
 
-test('renders learn react link', () => {
+jest.mock('axios');
+
+beforeEach(() => {
+  axios.get.mockResolvedValue({ data: [] });
+  localStorage.clear();
+});
+
+test('shows the welcome landing when no user is signed in', () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: /trading discipline terminal/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /proceed to login/i })).toBeInTheDocument();
 });
