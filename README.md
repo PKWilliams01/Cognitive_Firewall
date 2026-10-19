@@ -85,7 +85,7 @@ local MongoDB instance must be running.
 
 The app deploys with the frontend on **Vercel** and the backend (Express +
 MongoDB) on **Render** with the database on **MongoDB Atlas**. Config lives in
-`frontend/vercel.json` and `render.yaml`; see **[DEPLOYMENT.md](DEPLOYMENT.md)**
+`vercel.json` and `render.yaml`; see **[DEPLOYMENT.md](DEPLOYMENT.md)**
 for the full step-by-step.
 
 ## Background
