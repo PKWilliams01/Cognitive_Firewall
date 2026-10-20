@@ -9,6 +9,7 @@ import PageWrapper from './components/PageWrapper';
 import { LOCK_THRESHOLD } from './components/RiskMeter';
 import TradeExecutionWizard from './components/TradeExecutionWizard';
 import StrategySettings from './components/StrategySettings';
+import Tour from './components/Tour';
 import { ReflectiveJournal } from './components/ReflectiveJournal';
 import Settings from './components/Settings';
 import Guidebook from './components/Guidebook';
@@ -20,6 +21,11 @@ import { ToastProvider, useToast } from './components/Toast';
 const browserTimeZone = () => {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return null; }
 };
+
+// The getting-started tour shows once per account on this device.
+const tourKey = (id) => 'cf_tour_done_' + id;
+const tourDone = (id) => { try { return localStorage.getItem(tourKey(id)) === '1'; } catch { return true; } };
+const markTourDone = (id) => { try { if (id) localStorage.setItem(tourKey(id), '1'); } catch { /* storage blocked */ } };
 
 function App() {
   return (
@@ -35,6 +41,7 @@ function CognitiveFirewall() {
   const [view, setView] = useState('dashboard');
   const [showWizard, setShowWizard] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [showTour, setShowTour] = useState(false);
   const [showCooldown, setShowCooldown] = useState(false);
   const [journalTab, setJournalTab] = useState('trades');
   const [showKeys, setShowKeys] = useState(false);
@@ -119,7 +126,7 @@ function CognitiveFirewall() {
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
     fetchTradeHistory(userData._id);
-    if (userData.isNewUser) setShowGuide(true);
+    if (userData.isNewUser && !tourDone(userData._id)) setShowTour(true);
   };
 
   const isLocked = metrics?.isLocked ?? (metrics?.revengeRisk || 0) >= LOCK_THRESHOLD;
@@ -139,7 +146,7 @@ function CognitiveFirewall() {
     onExecute: openExecute,
     onNavigate: navigate,
     onHelp: () => setShowKeys(true),
-    enabled: Boolean(user) && !showWizard && !showCooldown && !showGuide && !showKeys,
+    enabled: Boolean(user) && !showWizard && !showCooldown && !showGuide && !showKeys && !showTour,
   });
 
   // Installed-app shortcuts (manifest): ?view=journal&tab=checkins, ?action=execute
@@ -191,6 +198,7 @@ function CognitiveFirewall() {
         onNavigate={navigate}
         onExecute={openExecute}
         onOpenGuide={() => setShowGuide(true)}
+        onStartTour={() => setShowTour(true)}
         onLogout={signOut}
         onShowShortcuts={() => setShowKeys(true)}
         firewallLocked={firewallLocked}
@@ -254,6 +262,13 @@ function CognitiveFirewall() {
 
       <AnimatePresence>
         {showGuide && <Guidebook onClose={() => setShowGuide(false)} />}
+        {showTour && (
+          <Tour
+            onNavigate={navigate}
+            onOpenManual={() => setShowGuide(true)}
+            onClose={() => { markTourDone(user?._id); setShowTour(false); }}
+          />
+        )}
       </AnimatePresence>
 
       <AnimatePresence>

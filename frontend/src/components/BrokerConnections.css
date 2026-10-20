@@ -48,3 +48,7 @@
 /* The shared segmented control is 2-up; brokers need 3, and a neutral "on" state. */
 .brokers-form .seg { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); grid-template-columns: none; }
 .brokers-form .seg-btn.is-on { color: var(--text-main); background: var(--surface-3); border-color: var(--border-strong); }
+.brokers-platform { flex: 1; min-width: 200px; }
+.brokers-steps { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+.brokers-steps p { margin: 0 0 4px; }
+.brokers-steps ol { margin: 0 0 4px; padding-left: 18px; }

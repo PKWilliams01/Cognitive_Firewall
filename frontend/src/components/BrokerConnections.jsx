@@ -255,21 +255,54 @@ function AddBroker({ onCancel, onAdded }) {
   );
 }
 
+// Most prop firms (FTMO included) run accounts on MetaTrader, whose own
+// "Save as report" export is HTML. Their servers are usually on GMT+2/+3.
+const MT_STEPS = [
+  'MT5: Toolbox → History → right-click → Positions → Report → HTML (Open XML is not supported).',
+  'MT4: Account History → right-click → All History → Save as Detailed Report.',
+];
+const PLATFORMS = [
+  { id: 'ftmo', label: 'FTMO (MT4 / MT5)', offset: 2, steps: MT_STEPS },
+  { id: 'mt-prop', label: 'Other MetaTrader prop firm', offset: 2, steps: MT_STEPS, note: 'e.g. FundedNext, The5ers, E8 — any account you trade in MT4 or MT5.' },
+  { id: 'mt', label: 'MetaTrader 4 / 5 broker', offset: 2, steps: MT_STEPS, note: "Check your broker's server time in MT's Market Watch." },
+  { id: 'csv', label: 'Other platform (CSV)', offset: 0, steps: ['Export closed trades as CSV with at least Symbol, Close time and Profit columns (cTrader, DXtrade, Match-Trader and most journals can).'] },
+];
+
+// MT5 saves reports as UTF-16; everything else is UTF-8.
+async function readStatement(file) {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  if (buf[0] === 0xff && buf[1] === 0xfe) return new TextDecoder('utf-16le').decode(buf);
+  if (buf[0] === 0xfe && buf[1] === 0xff) return new TextDecoder('utf-16be').decode(buf);
+  return new TextDecoder('utf-8').decode(buf);
+}
+
 function CsvImport() {
   const toast = useToast();
   const fileRef = useRef(null);
-  const [offset, setOffset] = useState(0);
+  const [platform, setPlatform] = useState('ftmo');
+  const [offset, setOffset] = useState(2);
   const [busy, setBusy] = useState(false);
+  const def = PLATFORMS.find((p) => p.id === platform);
+
+  const choose = (e) => {
+    const next = PLATFORMS.find((p) => p.id === e.target.value);
+    setPlatform(next.id);
+    setOffset(next.offset);
+  };
 
   const onFile = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) return toast.error('That file is over 2 MB');
+    if (file.size > 5 * 1024 * 1024) return toast.error('That file is over 5 MB');
     setBusy(true);
     try {
-      const csv = await file.text();
-      const { data } = await api.post('/api/brokers/import/csv', { csv, utcOffsetMinutes: Number(offset) * 60 });
+      const csv = await readStatement(file);
+      const { data } = await api.post('/api/brokers/import/csv', {
+        csv,
+        utcOffsetMinutes: Number(offset) * 60,
+        format: platform === 'csv' ? 'csv' : 'mt-csv',
+      });
       toast.success(`Imported ${data.added} trade${data.added === 1 ? '' : 's'}${data.duplicates ? ` · ${data.duplicates} already in your journal` : ''}${data.skipped ? ` · ${data.skipped} non-trade rows skipped` : ''}`);
     } catch (err) {
       toast.error(errorMessage(err, 'Import failed'));
@@ -281,18 +314,29 @@ function CsvImport() {
   return (
     <div className="brokers-csv">
       <div>
-        <span className="toggle-title">MetaTrader 4/5 or prop-firm CSV</span>
-        <span className="toggle-desc">Export your account history as CSV and drop it here. Imported trades land in your journal for review.</span>
+        <span className="toggle-title">Prop firm & MetaTrader statements</span>
+        <span className="toggle-desc">Upload your account history and the trades land in your journal for review. Re-uploading is safe, because duplicates are skipped.</span>
       </div>
       <div className="brokers-csv-row">
+        <label className="field brokers-platform">
+          <span className="field-label">Account type</span>
+          <select className="input" value={platform} onChange={choose}>
+            {PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+        </label>
         <label className="field brokers-offset">
           <span className="field-label">Server time (UTC±h)</span>
           <input className="input mono" type="number" min="-12" max="14" step="0.5" value={offset} onChange={(e) => setOffset(e.target.value)} />
         </label>
-        <input ref={fileRef} type="file" accept=".csv,text/csv,.txt" hidden onChange={onFile} data-testid="csv-input" />
+        <input ref={fileRef} type="file" accept=".htm,.html,.csv,.txt,text/html,text/csv" hidden onChange={onFile} data-testid="csv-input" />
         <button className="btn btn-ghost" onClick={() => fileRef.current?.click()} disabled={busy}>
-          <Upload size={15} /> {busy ? 'Importing…' : 'Upload CSV'}
+          <Upload size={15} /> {busy ? 'Importing…' : 'Upload statement'}
         </button>
+      </div>
+      <div className="brokers-steps">
+        {def.note && <p>{def.note}</p>}
+        <ol>{def.steps.map((s) => <li key={s}>{s}</li>)}</ol>
+        {def.offset === 2 && <p>Most MT prop-firm servers run on GMT+2 in winter and GMT+3 in summer. Use 3 for summer trades.</p>}
       </div>
     </div>
   );

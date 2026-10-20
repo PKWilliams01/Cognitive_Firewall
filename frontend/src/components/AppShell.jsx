@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import {
-  Brain, LayoutDashboard, BookOpen, SlidersHorizontal, Settings, Zap, LogOut, CircleHelp, Lock, Keyboard,
+  Brain, LayoutDashboard, BookOpen, SlidersHorizontal, Settings, Zap, LogOut, CircleHelp, Compass, Lock, Keyboard,
 } from 'lucide-react';
 import './AppShell.css';
 
@@ -32,7 +32,7 @@ function FirewallStatus({ locked }) {
 }
 
 export default function AppShell({
-  user, view, onNavigate, onExecute, onOpenGuide, onLogout, onShowShortcuts, firewallLocked = false, children,
+  user, view, onNavigate, onExecute, onOpenGuide, onStartTour, onLogout, onShowShortcuts, firewallLocked = false, children,
 }) {
   const current = NAV.find((n) => n.id === view) || NAV[0];
   const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -72,6 +72,11 @@ export default function AppShell({
         </nav>
 
         <div className="shell-sidebar-foot">
+          {onStartTour && (
+            <button className="shell-nav-item" onClick={onStartTour}>
+              <Compass size={17} /> <span>Take the tour</span>
+            </button>
+          )}
           <button className="shell-nav-item" onClick={onOpenGuide}>
             <CircleHelp size={17} /> <span>Operator's manual</span>
           </button>
@@ -106,6 +111,11 @@ export default function AppShell({
           <div className="shell-topbar-right">
             <span className="shell-date">{today}</span>
             <FirewallStatus locked={firewallLocked} />
+            {onStartTour && (
+              <button className="shell-icon-btn shell-mobile-only" onClick={onStartTour} aria-label="Take the tour">
+                <Compass size={17} />
+              </button>
+            )}
             <button className="shell-icon-btn shell-mobile-only" onClick={onOpenGuide} aria-label="Operator's manual">
               <CircleHelp size={17} />
             </button>
