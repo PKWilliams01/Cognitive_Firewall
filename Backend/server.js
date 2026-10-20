@@ -36,8 +36,8 @@ app.use(cors({
   credentials: true
 }));
 
-// CSV trade-history uploads need a larger body than the 100kb default.
-app.use("/api/brokers/import/csv", express.json({ limit: "2mb" }));
+// Trade-history uploads (CSV or MT HTML reports) need a larger body than the 100kb default.
+app.use("/api/brokers/import/csv", express.json({ limit: "5mb" }));
 app.use(express.json());
 
 // Throttle auth endpoints to blunt brute-force / credential-stuffing

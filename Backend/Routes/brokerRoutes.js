@@ -5,7 +5,7 @@ const { protect } = require("../Middleware/authMiddleware");
 const secretBox = require("../Services/secretBox");
 const { firewallState } = require("../Services/firewall");
 const brokers = require("../Services/brokers");
-const { parseCsv } = require("../Services/brokers/csvImport");
+const { parseStatement } = require("../Services/brokers/csvImport");
 
 const SYNC_THROTTLE_MS = 2 * 60 * 1000;
 
@@ -141,13 +141,14 @@ router.post("/:id/sync", requireConfigured, async (req, res) => {
     res.status(result.error ? 502 : 200).json(result);
 });
 
-// CSV import for MetaTrader 4/5 and prop-firm exports. No credentials involved.
-router.post("/import/csv", express.json({ limit: "2mb" }), async (req, res) => {
+// Statement import: MetaTrader 4/5 HTML reports (FTMO and other MT prop firms)
+// or CSV. No credentials involved.
+router.post("/import/csv", express.json({ limit: "5mb" }), async (req, res) => {
     const { csv, utcOffsetMinutes = 0, format = "mt-csv" } = req.body || {};
     if (typeof csv !== "string" || !csv.trim()) return res.status(400).json({ message: "No CSV content provided" });
     const source = format === "csv" ? "csv" : "mt-csv";
     try {
-        const { trades, skipped } = parseCsv(csv, { utcOffsetMinutes: Number(utcOffsetMinutes) || 0 });
+        const { trades, skipped } = parseStatement(csv, { utcOffsetMinutes: Number(utcOffsetMinutes) || 0 });
         const added = await brokers.saveImportedTrades(req.user._id, source, trades);
         res.json({ parsed: trades.length, added, duplicates: trades.length - added, skipped: skipped.length });
     } catch (err) {

@@ -160,3 +160,41 @@ describe('connectors (mocked HTTP)', () => {
     expect(action.type).toBe('cancel_open_orders');
   });
 });
+
+describe('MetaTrader HTML reports (FTMO and other MT prop firms)', () => {
+  const { parseHtmlReport, parseStatement } = require('../Services/brokers/csvImport');
+
+  test('MT4 detailed statement: closed trades only, fees included', () => {
+    const html = `<html><body><table>
+      <tr><td colspan="14"><b>Closed Transactions:</b></td></tr>
+      <tr><td>Ticket</td><td>Open Time</td><td>Type</td><td>Size</td><td>Item</td><td>Price</td><td>S / L</td><td>T / P</td><td>Close Time</td><td>Price</td><td>Commission</td><td>Taxes</td><td>Swap</td><td>Profit</td></tr>
+      <tr><td>5001</td><td>2024.05.21 10:30</td><td>buy</td><td>1.00</td><td>eurusd</td><td>1.0850</td><td>0</td><td>0</td><td>2024.05.21 11:00</td><td>1.0870</td><td>-7.00</td><td>0.00</td><td>-1.00</td><td>200.00</td></tr>
+      <tr><td>5002</td><td>2024.05.21 12:00</td><td>balance</td><td colspan="10">Deposit</td><td>100&nbsp;000.00</td></tr>
+      <tr><td>5003</td><td>2024.05.21 13:00</td><td>buy limit</td><td>1.00</td><td>gbpusd</td><td>1.2</td><td>0</td><td>0</td><td>2024.05.21 13:30</td><td>1.2</td><td colspan="3">cancelled</td><td>0</td></tr>
+      <tr><td colspan="14"><b>Open Trades:</b></td></tr>
+      <tr><td>Ticket</td><td>Open Time</td><td>Type</td><td>Size</td><td>Item</td><td>Price</td><td>S / L</td><td>T / P</td><td>&nbsp;</td><td>Price</td><td>Commission</td><td>Taxes</td><td>Swap</td><td>Profit</td></tr>
+      <tr><td>6000</td><td>2024.05.22 09:00</td><td>sell</td><td>1.00</td><td>usdjpy</td><td>155</td><td>0</td><td>0</td><td>&nbsp;</td><td>154</td><td>0</td><td>0</td><td>0</td><td>50.00</td></tr>
+    </table></body></html>`;
+    const { trades } = parseStatement(html);
+    expect(trades).toHaveLength(1);
+    expect(trades[0]).toMatchObject({ externalId: '5001', instrument: 'EURUSD', direction: 'buy', pnl: 192 });
+  });
+
+  test('MT5 report: reads the Positions section, stops before Orders/Deals', () => {
+    const html = `<table>
+      <tr><th colspan="13"><b>Positions</b></th></tr>
+      <tr><td>Time</td><td>Position</td><td>Symbol</td><td>Type</td><td>Volume</td><td>Price</td><td>S / L</td><td>T / P</td><td>Time</td><td>Price</td><td>Commission</td><td>Swap</td><td>Profit</td></tr>
+      <tr><td>2024.06.03 08:00:05</td><td>777</td><td>US30.cash</td><td>sell</td><td>0.5</td><td>38500</td><td></td><td></td><td>2024.06.03 08:20:00</td><td>38450</td><td>0</td><td>0</td><td>25.00</td></tr>
+      <tr><th colspan="13"><b>Orders</b></th></tr>
+      <tr><td>Open Time</td><td>Order</td><td>Symbol</td><td>Type</td><td>Volume</td><td>Price</td><td>S / L</td><td>T / P</td><td>Time</td><td>State</td><td>Comment</td></tr>
+      <tr><td>2024.06.03 08:00:05</td><td>778</td><td>US30.cash</td><td>sell</td><td>0.5</td><td>38500</td><td></td><td></td><td>2024.06.03 08:00:05</td><td>filled</td><td></td></tr>
+    </table>`;
+    const { trades } = parseHtmlReport(html, { utcOffsetMinutes: 180 });
+    expect(trades).toEqual([expect.objectContaining({ externalId: '777', instrument: 'US30.CASH', direction: 'sell', pnl: 25 })]);
+    expect(trades[0].exitTime.toISOString()).toBe('2024-06-03T05:20:00.000Z');
+  });
+
+  test('explains when there is no trades table', () => {
+    expect(() => parseStatement('<table><tr><td>hello</td></tr></table>')).toThrow(/closed-trades table/);
+  });
+});
