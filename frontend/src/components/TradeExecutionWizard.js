@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { AlertTriangle, ShieldCheck, Activity, Lock } from 'lucide-react';
-import API_BASE from '../config';
+import api, { errorMessage } from '../api/client';
+import { useToast } from './Toast';
 
 // Added revengeRisk to the props
-const TradeExecutionWizard = ({ userId, onTradeSuccess, user, onClose, revengeRisk = 0 }) => {
+const TradeExecutionWizard = ({ userId, onTradeSuccess, user, onClose, revengeRisk = 0, firewall }) => {
+    const toast = useToast();
     const [phase, setPhase] = useState('PRE_FLIGHT');
     const [instrument, setInstrument] = useState('');
     const [direction, setDirection] = useState('buy');
@@ -27,74 +28,66 @@ const TradeExecutionWizard = ({ userId, onTradeSuccess, user, onClose, revengeRi
         
         const fetchTodayTrades = async () => {
             try {
-                // 1. Grab and aggressively clean the token
-                const storedUser = JSON.parse(localStorage.getItem('user'));
-                let token = storedUser?.token;
-
-                if (token) {
-                    token = String(token).replace(/['"]+/g, '');
-                } else {
-                    const rawToken = localStorage.getItem('token');
-                    token = rawToken ? rawToken.replace(/['"]+/g, '') : '';
-                }
-
-                // 2. Build the clean Authorization header
-                const config = {
-                    headers: { Authorization: `Bearer ${token}` }
-                };
-
-                // 3. Pass the config as the second argument to axios.get!
-                const res = await axios.get(`${API_BASE}/api/trades/user/${user._id}`, config);
-                
+                const res = await api.get(`/api/trades/user/${user._id}`);
                 const todayStr = new Date().toDateString();
-                const count = res.data.filter(t => new Date(t.entryTime || t.timestamp).toDateString() === todayStr).length;
+                const count = (res.data || []).filter(t => new Date(t.entryTime || t.timestamp).toDateString() === todayStr).length;
                 setTradesToday(count);
-            } catch (err) {
-                console.error("Failed to fetch current trades:", err.response?.data || err);
+            } catch {
+                // the server re-checks limits at pre-flight anyway
             }
         };
-        
+
         fetchTodayTrades();
     }, [user]);
 
     // --- LIMIT & LOCK CALCULATIONS ---
-    const MAX_TRADES = Number(user.plannedDailyLimit || 3);
+    const MAX_TRADES = Number(firewall?.dailyLimit || user.plannedDailyLimit || 3);
     const rulesList = user.tradingPlanRules || [];
-    const tradesRemaining = Math.max(0, MAX_TRADES - tradesToday);
-    
-    const isOverLimit = tradesRemaining <= 0;
-    const isTilted = revengeRisk >= 80; // Triggers if Revenge Risk is 80% or higher
-    
+    // Prefer the server's authoritative count; fall back to the local one.
+    const tradesRemaining = firewall?.tradesRemaining ?? Math.max(0, MAX_TRADES - tradesToday);
+
+    const isOverLimit = firewall ? firewall.lockReason === 'daily_limit' : tradesRemaining <= 0;
+    const isTilted = firewall ? firewall.lockReason === 'revenge' : revengeRisk >= 80;
+
     // The system locks if THEY OVERTRADE -OR- THEY ARE TILTED
-    const isHardLocked = isOverLimit || isTilted;
+    const isHardLocked = firewall?.isLocked ?? (isOverLimit || isTilted);
 
     // --- HANDLERS ---
-    const handleStartTrade = () => {
-        // Failsafe: Secondary backend-style check
-        if (isHardLocked) return;
+    const handleStartTrade = async () => {
+        if (isHardLocked || loading) return;
 
-        if (!instrument) return alert("Please select an asset from the dropdown.");
-        
+        if (!instrument) return toast.error('Select an asset before running the pre-flight.');
         const numericRisk = Number(risk);
-        if (!risk || numericRisk <= 0) return alert("Please enter a valid risk percentage.");
-
-        // ITERATION 2 FIX: Hard cap on maximum allowable risk per trade
-        if (numericRisk > 5.0) {
-            return alert("🛑 FIREWALL BLOCK: Risk exceeds maximum allowable threshold (5.0%). Execution halted to protect account equity.");
-        }
+        if (!risk || numericRisk <= 0) return toast.error('Enter a risk percentage greater than 0.');
 
         const ticks = Object.values(checkedRules).filter(val => val === true).length;
-        if (rulesList.length > 0 && ticks < rulesList.length) {
-            const confirmRules = window.confirm(`⚠️ CONFLUENCE WARNING: You only checked ${ticks}/${rulesList.length} rules.\n\nTrading without full confluence reduces your edge. Force trade anyway?`);
-            if (!confirmRules) return;
-           }
 
-        setEntryTime(new Date());
-        setPhase('LIVE');
+        // The server is the authority: lock state, risk cap and strict-confluence mode.
+        setLoading(true);
+        try {
+            await api.post('/api/trades/preflight', {
+                instrument,
+                direction,
+                riskPercentage: numericRisk,
+                confluencesChecked: ticks,
+                confluencesTotal: rulesList.length,
+            });
+            if (rulesList.length > 0 && ticks < rulesList.length) {
+                toast.info(`Approved with ${ticks}/${rulesList.length} confluences. Trading without full confluence reduces your edge.`);
+            }
+            setEntryTime(new Date());
+            setPhase('LIVE');
+        } catch (err) {
+            const message = errorMessage(err, 'Pre-flight failed.');
+            if (err?.response?.status === 423) toast.lock(message);
+            else toast.error(message);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleCloseTrade = async () => {
-    if (!pnl) return alert("Please enter the final PnL");
+    if (pnl === '' || !Number.isFinite(Number(pnl))) return toast.error('Enter the final P/L for this trade.');
     
     setLoading(true);
     const numPnL = Number(pnl);
@@ -113,33 +106,15 @@ const TradeExecutionWizard = ({ userId, onTradeSuccess, user, onClose, revengeRi
         riskPercentage: Number(risk) 
     };
 
-    // 1. Grab the VIP Badge from Local Storage
-    const storedUser = JSON.parse(localStorage.getItem('user'));
-    let token = storedUser?.token;
-
-    // THE FIX: Aggressively clean the token of any hidden quotation marks
-    if (token) {
-        token = String(token).replace(/['"]+/g, '');
-    } else {
-        // Fallback just in case you stored it under 'token' directly earlier
-        const rawToken = localStorage.getItem('token');
-        token = rawToken ? rawToken.replace(/['"]+/g, '') : '';
-    }
-
-    // 2. Create the Authorization Header with the clean token
-    const config = {
-        headers: { Authorization: `Bearer ${token}` }
-    };
-
     try {
-        await axios.post(`${API_BASE}/api/trades`, tradeData, config);
-        
-        if (onTradeSuccess) onTradeSuccess(); 
-        if (onClose) onClose();              
+        await api.post('/api/trades', tradeData);
+        toast.success('Trade logged. Your metrics are updating.');
+        if (onTradeSuccess) onTradeSuccess();
+        if (onClose) onClose();
     } catch (err) {
-        console.error("Save Error:", err.response?.data || err);
-        // Added better error logging so you can see exactly why it fails if it ever does again
-        alert("Save failed: " + (err.response?.data?.msg || "Check database connection"));
+        const message = errorMessage(err, 'Could not save the trade.');
+        if (err?.response?.status === 423) toast.lock(message);
+        else toast.error(message);
     } finally {
         setLoading(false);
     }

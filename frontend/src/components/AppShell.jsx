@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import {
-  Brain, LayoutDashboard, BookOpen, SlidersHorizontal, Zap, LogOut, CircleHelp, Lock,
+  Brain, LayoutDashboard, BookOpen, SlidersHorizontal, Settings, Zap, LogOut, CircleHelp, Lock,
 } from 'lucide-react';
 import './AppShell.css';
 
@@ -9,6 +9,7 @@ export const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, subtitle: 'Your behavioural risk at a glance' },
   { id: 'journal', label: 'Journal', icon: BookOpen, subtitle: 'Every execution, with the psychology behind it' },
   { id: 'strategy', label: 'Strategy', icon: SlidersHorizontal, subtitle: 'The rules your firewall enforces' },
+  { id: 'settings', label: 'Settings', icon: Settings, subtitle: 'Risk limits, cool-off, security and your data' },
 ];
 
 const initials = (name = '') =>

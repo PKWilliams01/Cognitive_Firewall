@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { FileText, TrendingUp, TrendingDown, Calendar } from 'lucide-react';
-import axios from 'axios';
 import PageWrapper from './PageWrapper';
-import API_BASE from '../config';
+import api, { errorMessage } from '../api/client';
+import { useToast } from './Toast';
 
 export function ReflectiveJournal({ trades, userId, onTradeLogged }) {
+  const toast = useToast();
   const [showForm, setShowForm] = useState(false);
   
   // Form State
@@ -31,16 +32,14 @@ export function ReflectiveJournal({ trades, userId, onTradeLogged }) {
         riskPercentage: 1
       };
 
-      // Attach the JWT — POST /api/trades is a protected route
-      const token = JSON.parse(localStorage.getItem('user'))?.token;
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-
-      await axios.post(`${API_BASE}/api/trades`, payload, config);
-      alert("Trade Logged Successfully");
+      await api.post('/api/trades', payload);
+      toast.success('Trade logged to your ledger.');
       setShowForm(false);
-      onTradeLogged(); 
+      onTradeLogged();
     } catch (err) {
-      alert("Error logging trade: " + err.message);
+      const message = errorMessage(err, 'Could not log the trade.');
+      if (err?.response?.status === 423) toast.lock(message);
+      else toast.error(message);
     }
   };
 

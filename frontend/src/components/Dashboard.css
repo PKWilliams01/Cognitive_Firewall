@@ -176,3 +176,31 @@
   .dash-kpi-value { font-size: 22px; }
   .dash-chart-body { height: 220px; }
 }
+
+/* --- Live alerts --- */
+.dash-alerts { display: flex; flex-direction: column; gap: 12px; border-color: rgba(255, 181, 71, 0.3); }
+.dash-alerts ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.dash-alert {
+  --a: var(--info);
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.dash-alert.sev-high { --a: var(--danger); border-color: rgba(255, 77, 109, 0.35); }
+.dash-alert.sev-medium { --a: var(--warning); }
+.dash-alert.sev-low { --a: var(--text-muted); }
+.dash-alert-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--a);
+  box-shadow: 0 0 8px var(--a);
+}

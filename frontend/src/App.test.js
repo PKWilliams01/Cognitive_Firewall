@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import axios from 'axios';
 import App from './App';
 
@@ -68,5 +68,35 @@ describe('signed in', () => {
 
     fireEvent.keyDown(window, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+});
+
+describe('settings and session handling', () => {
+  const signIn = (extra = {}) =>
+    localStorage.setItem('user', JSON.stringify({ _id: 'u1', username: 'Gee', email: 'g@x.com', token: 't', timezone: 'Europe/London', ...extra }));
+
+  test('Settings is reachable from the navigation', async () => {
+    signIn();
+    axios.get.mockImplementation((url) =>
+      Promise.resolve({ data: url.endsWith('/api/users/me') ? { _id: 'u1', username: 'Gee', email: 'g@x.com', startingBalance: 1000, currency: 'USD', plannedDailyLimit: 3, maxRiskPercent: 5, lockThreshold: 80, cooldownMinutes: 0, strictConfluence: true, timezone: 'Europe/London', whyITrade: '', hasPassword: true } : [] })
+    );
+    render(<App />);
+    await screen.findByRole('heading', { level: 1, name: 'Dashboard' });
+
+    fireEvent.click(screen.getAllByRole('button', { name: /settings/i })[0]);
+    expect(await screen.findByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /firewall & risk/i })).toBeInTheDocument();
+  });
+
+  test('an expired session signs the user out with an explanation', async () => {
+    signIn();
+    render(<App />);
+    await screen.findByRole('heading', { level: 1, name: 'Dashboard' });
+
+    act(() => { window.dispatchEvent(new CustomEvent('auth:expired')); });
+
+    expect(await screen.findByRole('heading', { name: /welcome back/i })).toBeInTheDocument();
+    expect(screen.getByText(/session has expired/i)).toBeInTheDocument();
+    expect(localStorage.getItem('user')).toBeNull();
   });
 });

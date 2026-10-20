@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import {
   Target, Activity, Scale, Wallet, Percent, Sparkles, ShieldCheck, ShieldAlert, Lock, Zap,
-  TrendingUp, CircleCheck, CircleX, Flame,
+  TrendingUp, CircleCheck, CircleX, Flame, TriangleAlert,
 } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid } from 'recharts';
 import RiskMeter, { LOCK_THRESHOLD } from './RiskMeter';
@@ -88,21 +88,34 @@ export default function Dashboard({ user, trades = [], metrics, onExecute }) {
     netPnl = 0,
     winRate = 0,
     chartData = [],
+    warnings = [],
+    lockThreshold = LOCK_THRESHOLD,
+    lockReason,
+    lockedUntil,
+    dailyLimit,
   } = metrics || {};
 
-  const locked = revengeRisk >= LOCK_THRESHOLD;
+  // Server verdict first (it knows the user's threshold, cooldown and limit);
+  // fall back to the score for older payloads.
+  const locked = metrics?.isLocked ?? revengeRisk >= lockThreshold;
+  const dailyLimitLock = locked && lockReason === 'daily_limit';
   const elevated = !locked && revengeRisk >= 50;
   const impulsivity = toNumber(impulsivityIndex);
   const disposition = toNumber(dispositionRatio);
   const pnl = toNumber(netPnl);
   const insight = generateStatisticalInsight(hasTrades, trades);
   const firstName = (user?.username || 'Trader').split(' ')[0];
+  const untilLabel = lockedUntil
+    ? new Date(lockedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : null;
 
-  const state = locked
-    ? { icon: Lock, title: 'Hard Lock engaged', copy: 'Revenge risk is critical. Execution is locked — step away, reset, and come back to your plan.', tone: 'down' }
-    : elevated
-      ? { icon: ShieldAlert, title: 'Tilt risk rising', copy: 'Your recent pattern looks reactive. Slow down and re-check your pre-flight before the next entry.', tone: 'warn' }
-      : { icon: ShieldCheck, title: 'Composed and in control', copy: 'No signs of tilt. Execution protocols are active — trade your plan.', tone: 'up' };
+  const state = dailyLimitLock
+    ? { icon: Lock, title: 'Daily limit reached', copy: `You've taken all ${dailyLimit ? `${dailyLimit} ` : ''}trades your plan allows today. The firewall reopens tomorrow — protect today's result.`, tone: 'down' }
+    : locked
+      ? { icon: Lock, title: 'Hard Lock engaged', copy: untilLabel ? `Revenge risk is critical. Execution is locked until ${untilLabel} — step away and reset.` : 'Revenge risk is critical. Execution is locked — step away, reset, and come back to your plan.', tone: 'down' }
+      : elevated
+        ? { icon: ShieldAlert, title: 'Tilt risk rising', copy: 'Your recent pattern looks reactive. Slow down and re-check your pre-flight before the next entry.', tone: 'warn' }
+        : { icon: ShieldCheck, title: 'Composed and in control', copy: 'No signs of tilt. Execution protocols are active — trade your plan.', tone: 'up' };
 
   const integrityColor = systemIntegrity >= 70 ? 'var(--primary)' : systemIntegrity >= 40 ? 'var(--warning)' : 'var(--danger)';
 
@@ -123,7 +136,7 @@ export default function Dashboard({ user, trades = [], metrics, onExecute }) {
         aria-label="Firewall status"
       >
         <div className="dash-hero-meter">
-          <RiskMeter value={revengeRisk} />
+          <RiskMeter value={revengeRisk} threshold={lockThreshold} />
         </div>
         <div className="dash-hero-body">
           <span className={`badge badge-${state.tone}`}><state.icon size={12} /> Firewall status</span>
@@ -174,6 +187,21 @@ export default function Dashboard({ user, trades = [], metrics, onExecute }) {
           tone={!hasTrades ? 'neutral' : winRate >= 50 ? 'up' : 'warn'}
         />
       </div>
+
+      {/* ---- Live alerts from the server ---- */}
+      {warnings.length > 0 && (
+        <motion.section className="card dash-alerts" variants={rise} initial="hidden" animate="show" custom={6.5} aria-label="Live alerts">
+          <span className="card-title"><TriangleAlert size={14} /> Live alerts</span>
+          <ul>
+            {warnings.map((w) => (
+              <li key={w.code} className={`dash-alert sev-${w.severity}`}>
+                <span className="dash-alert-dot" aria-hidden="true" />
+                {w.message}
+              </li>
+            ))}
+          </ul>
+        </motion.section>
+      )}
 
       {/* ---- Insight ---- */}
       <motion.section

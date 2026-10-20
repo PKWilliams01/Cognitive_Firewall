@@ -73,11 +73,29 @@ const TradeSchema = new mongoose.Schema(
       type: String,
       maxLength: 500,
       default: ""
+    },
+
+    // Where the record came from: logged by hand, or imported from a broker.
+    source: {
+      type: String,
+      enum: ["manual", "oanda", "alpaca", "binance", "mt-csv"],
+      default: "manual"
+    },
+
+    // Broker-side trade id, used to de-duplicate imports.
+    externalId: {
+      type: String
     }
   },
   {
     timestamps: true
   }
+);
+
+// One copy of each broker trade per user
+TradeSchema.index(
+  { userId: 1, source: 1, externalId: 1 },
+  { unique: true, partialFilterExpression: { externalId: { $type: "string" } } }
 );
 
 module.exports = mongoose.model("Trade", TradeSchema);

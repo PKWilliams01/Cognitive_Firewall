@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Lock, LockOpen, AlertTriangle, Settings2, Hash, Activity } from 'lucide-react';
-import axios from 'axios';
 import PageWrapper from './PageWrapper';
-import API_BASE from '../config';
+import api, { errorMessage } from '../api/client';
+import { useToast } from './Toast';
 
 export default function StrategySettings({ user, onUpdate }) {
+  const toast = useToast();
   const [isLocked, setIsLocked] = useState(true);
   const [rules, setRules] = useState([]);
   const [dailyLimit, setDailyLimit] = useState(3);
@@ -63,22 +64,17 @@ export default function StrategySettings({ user, onUpdate }) {
     setLoading(true);
     try {
       const ruleStrings = rules.map(r => r.fullString);
-      // Attach the JWT — PUT /api/users/:id is now a protected route
-      const token = JSON.parse(localStorage.getItem('user'))?.token;
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await axios.put(`${API_BASE}/api/users/${user._id}`, {
+      const res = await api.patch('/api/users/me', {
         tradingPlanRules: ruleStrings,
-        plannedDailyLimit: parseInt(dailyLimit)
-      }, config);
+        plannedDailyLimit: parseInt(dailyLimit, 10)
+      });
 
+      // App merges the profile and keeps the session token.
       onUpdate(res.data);
-      localStorage.setItem('user', JSON.stringify(res.data));
-      
       setIsLocked(true);
-      alert("✅ Protocols Updated: Risk Limits Enforced.");
+      toast.success('Strategy sealed. The firewall is enforcing your new rules.');
     } catch (err) {
-      console.error("Save Error:", err.response || err);
-      alert(`System Sync Failed: ${err.response?.status || 'Check Connection'}`);
+      toast.error(errorMessage(err, 'Could not save your strategy.'));
     } finally {
       setLoading(false);
     }
