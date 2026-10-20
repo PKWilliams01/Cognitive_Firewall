@@ -243,3 +243,5 @@
 @media (max-width: 420px) {
   .shell-status { padding: 5px 8px; font-size: 10px; }
 }
+
+.shell-kbd { margin-left: auto; min-width: 20px; padding: 1px 6px; font-size: 11px; box-shadow: none; }
