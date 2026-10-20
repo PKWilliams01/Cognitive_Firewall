@@ -1,0 +1,26 @@
+.keys-modal {
+  width: 100%;
+  max-width: 440px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-strong);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  box-shadow: var(--shadow-lg);
+}
+.keys-head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 14px 20px; border-bottom: 1px solid var(--border); color: var(--primary); }
+.keys-head h2 { margin: 0; flex: 1; font-size: 17px; color: var(--text-main); }
+.keys-list { list-style: none; margin: 0; padding: 8px 20px 18px; }
+.keys-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; color: var(--text-muted); }
+.keys-list li:last-child { border-bottom: none; }
+.keys-combo { display: inline-flex; align-items: center; gap: 6px; }
+.keys-then { font-size: 11px; color: var(--text-dim); }
+kbd {
+  min-width: 26px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  text-align: center;
+  font: 700 12px var(--font-mono);
+  color: var(--text-main);
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 2px 0 var(--border-strong);
+}

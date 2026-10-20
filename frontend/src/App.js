@@ -13,6 +13,8 @@ import { ReflectiveJournal } from './components/ReflectiveJournal';
 import Settings from './components/Settings';
 import Guidebook from './components/Guidebook';
 import CooldownScreen from './components/CooldownScreen';
+import ShortcutsHelp from './components/ShortcutsHelp';
+import useShortcuts from './hooks/useShortcuts';
 import { ToastProvider, useToast } from './components/Toast';
 
 const browserTimeZone = () => {
@@ -35,6 +37,7 @@ function CognitiveFirewall() {
   const [showGuide, setShowGuide] = useState(false);
   const [showCooldown, setShowCooldown] = useState(false);
   const [journalTab, setJournalTab] = useState('trades');
+  const [showKeys, setShowKeys] = useState(false);
   const [tradeHistory, setTradeHistory] = useState([]);
   const [metrics, setMetrics] = useState(null);
   const [authStage, setAuthStage] = useState('welcome'); // 'welcome' | 'login'
@@ -119,6 +122,41 @@ function CognitiveFirewall() {
     if (userData.isNewUser) setShowGuide(true);
   };
 
+  const isLocked = metrics?.isLocked ?? (metrics?.revengeRisk || 0) >= LOCK_THRESHOLD;
+
+  // Execute opens the wizard, or the cool-off screen while the firewall is locked.
+  const openExecute = useCallback(
+    () => (isLocked ? setShowCooldown(true) : setShowWizard(true)),
+    [isLocked]
+  );
+  const navigate = useCallback((next) => {
+    if (next === 'journal') setJournalTab('trades');
+    setView(next);
+  }, []);
+
+  // Keyboard shortcuts (off while signed out or a dialog is open).
+  useShortcuts({
+    onExecute: openExecute,
+    onNavigate: navigate,
+    onHelp: () => setShowKeys(true),
+    enabled: Boolean(user) && !showWizard && !showCooldown && !showGuide && !showKeys,
+  });
+
+  // Installed-app shortcuts (manifest): ?view=journal&tab=checkins, ?action=execute
+  useEffect(() => {
+    if (!user?._id || metrics === null) return;
+    const params = new URLSearchParams(window.location.search);
+    const target = params.get('view');
+    const action = params.get('action');
+    if (!target && !action) return;
+    if (['dashboard', 'journal', 'strategy', 'settings'].includes(target)) {
+      setJournalTab(target === 'journal' && params.get('tab') === 'checkins' ? 'checkins' : 'trades');
+      setView(target);
+    }
+    if (action === 'execute') openExecute();
+    window.history.replaceState(null, '', window.location.pathname);
+  }, [user?._id, metrics, openExecute]);
+
   // --- AUTH FLOW: Welcome -> Login ---
   if (!user) {
     if (authStage === 'welcome') {
@@ -142,14 +180,8 @@ function CognitiveFirewall() {
   }
 
   // The server is authoritative; fall back to the score for older payloads.
-  const firewallLocked = metrics?.isLocked ?? (metrics?.revengeRisk || 0) >= LOCK_THRESHOLD;
+  const firewallLocked = isLocked;
 
-  // Execute opens the wizard, or the cool-off screen while the firewall is locked.
-  const openExecute = () => (firewallLocked ? setShowCooldown(true) : setShowWizard(true));
-  const navigate = (next) => {
-    if (next === 'journal') setJournalTab('trades');
-    setView(next);
-  };
 
   return (
     <>
@@ -160,6 +192,7 @@ function CognitiveFirewall() {
         onExecute={openExecute}
         onOpenGuide={() => setShowGuide(true)}
         onLogout={signOut}
+        onShowShortcuts={() => setShowKeys(true)}
         firewallLocked={firewallLocked}
       >
         <AnimatePresence mode="wait">
@@ -221,6 +254,10 @@ function CognitiveFirewall() {
 
       <AnimatePresence>
         {showGuide && <Guidebook onClose={() => setShowGuide(false)} />}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showKeys && <ShortcutsHelp onClose={() => setShowKeys(false)} />}
       </AnimatePresence>
     </>
   );

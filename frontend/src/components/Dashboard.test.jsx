@@ -88,7 +88,7 @@ test('recent activity lists trades with plan adherence', () => {
     />
   );
   expect(screen.getByText('XAU/USD')).toBeInTheDocument();
-  expect(screen.getByText(/plan broken/i)).toBeInTheDocument();
+  expect(screen.getByText(/plan broken/i, { selector: '.dash-trade-meta' })).toBeInTheDocument();
   expect(screen.getByText('−$40.00')).toBeInTheDocument();
 });
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import {
-  Brain, LayoutDashboard, BookOpen, SlidersHorizontal, Settings, Zap, LogOut, CircleHelp, Lock,
+  Brain, LayoutDashboard, BookOpen, SlidersHorizontal, Settings, Zap, LogOut, CircleHelp, Lock, Keyboard,
 } from 'lucide-react';
 import './AppShell.css';
 
@@ -32,7 +32,7 @@ function FirewallStatus({ locked }) {
 }
 
 export default function AppShell({
-  user, view, onNavigate, onExecute, onOpenGuide, onLogout, firewallLocked = false, children,
+  user, view, onNavigate, onExecute, onOpenGuide, onLogout, onShowShortcuts, firewallLocked = false, children,
 }) {
   const current = NAV.find((n) => n.id === view) || NAV[0];
   const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -75,6 +75,11 @@ export default function AppShell({
           <button className="shell-nav-item" onClick={onOpenGuide}>
             <CircleHelp size={17} /> <span>Operator's manual</span>
           </button>
+          {onShowShortcuts && (
+            <button className="shell-nav-item" onClick={onShowShortcuts}>
+              <Keyboard size={17} /> <span>Keyboard shortcuts</span> <kbd className="shell-kbd">?</kbd>
+            </button>
+          )}
           <div className="shell-user">
             <Avatar user={user} />
             <div className="shell-user-meta">

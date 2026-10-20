@@ -7,6 +7,7 @@ import {
 import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid } from 'recharts';
 import RiskMeter, { LOCK_THRESHOLD } from './RiskMeter';
 import useCountUp from './useCountUp';
+import DisciplineStreak from './DisciplineStreak';
 import './Dashboard.css';
 
 const toNumber = (v) => {
@@ -187,6 +188,13 @@ export default function Dashboard({ user, trades = [], metrics, onExecute }) {
           tone={!hasTrades ? 'neutral' : winRate >= 50 ? 'up' : 'warn'}
         />
       </div>
+
+      {/* ---- Streak & discipline calendar ---- */}
+      {hasTrades && (
+        <motion.div variants={rise} initial="hidden" animate="show" custom={6.2}>
+          <DisciplineStreak trades={trades} timeZone={user?.timezone || 'UTC'} />
+        </motion.div>
+      )}
 
       {/* ---- Live alerts from the server ---- */}
       {warnings.length > 0 && (

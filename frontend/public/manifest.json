@@ -1,25 +1,22 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
-  "icons": [
-    {
-      "src": "favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
-    },
-    {
-      "src": "logo192.png",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "logo512.png",
-      "type": "image/png",
-      "sizes": "512x512"
-    }
-  ],
-  "start_url": ".",
+  "short_name": "Firewall",
+  "name": "Cognitive Firewall — Trading Discipline Terminal",
+  "description": "Behavioural risk engine for day traders: pre-flight checks, revenge-risk monitoring and a Hard Lock when tilt takes over.",
+  "id": "/",
+  "start_url": "/?source=pwa",
+  "scope": "/",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "orientation": "any",
+  "theme_color": "#06080c",
+  "background_color": "#06080c",
+  "categories": ["finance", "productivity", "health"],
+  "icons": [
+    { "src": "logo192.png", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+    { "src": "logo512.png", "type": "image/png", "sizes": "512x512", "purpose": "any" },
+    { "src": "maskable-512.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Start pre-flight", "short_name": "Pre-flight", "url": "/?action=execute", "icons": [{ "src": "logo192.png", "sizes": "192x192" }] },
+    { "name": "Mood check-in", "short_name": "Check-in", "url": "/?view=journal&tab=checkins", "icons": [{ "src": "logo192.png", "sizes": "192x192" }] }
+  ]
 }
