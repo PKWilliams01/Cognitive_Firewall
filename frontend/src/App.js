@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import './App.css';
 import API_BASE from './config';
-import { Brain, LayoutDashboard, BookOpen, Settings, LogOut, Zap, HelpCircle } from 'lucide-react';
+import { AnimatePresence } from 'framer-motion';
 import Welcome from './pages/Welcome';
 import LoginScreen from './components/LoginScreen';
-import BehaviouralFeedbackPanel from './components/BehaviouralFeedbackPanel';
+import AppShell from './components/AppShell';
+import Dashboard from './components/Dashboard';
+import PageWrapper from './components/PageWrapper';
+import { LOCK_THRESHOLD } from './components/RiskMeter';
 import TradeExecutionWizard from './components/TradeExecutionWizard';
 import StrategySettings from './components/StrategySettings';
 import { ReflectiveJournal } from './components/ReflectiveJournal';
@@ -36,7 +38,6 @@ function App() {
     // 1. Grab the VIP Badge (JWT) from local storage
     const storedUser = JSON.parse(localStorage.getItem('user'));
     const token = storedUser?.token;
-    console.log("👮‍♂️ BOUNCER CHECK - Token is:", token);
     // 2. Create the Authorization Header
     const config = {
       headers: { Authorization: `Bearer ${token}` }
@@ -93,57 +94,32 @@ function App() {
     );
   }
 
+  const firewallLocked = (metrics?.revengeRisk || 0) >= LOCK_THRESHOLD;
+
   return (
-    <div className="app-container">
-      {/* HEADER */}
-      <header className="app-header">
-        <div className="logo-section">
-          <div className="logo-icon">
-            <Brain size={20} />
-          </div>
-          <div style={{ lineHeight: '1.2' }}>
-            <span style={{ display: 'block', fontSize: '16px', fontWeight: '900' }}>COGNITIVE</span>
-            <span style={{ display: 'block', fontSize: '10px', color: 'var(--primary)', letterSpacing: '2px' }}>FIREWALL</span>
-          </div>
-        </div>
+    <>
+      <AppShell
+        user={user}
+        view={view}
+        onNavigate={setView}
+        onExecute={() => setShowWizard(true)}
+        onOpenGuide={() => setShowGuide(true)}
+        onLogout={handleLogout}
+        firewallLocked={firewallLocked}
+      >
+        <AnimatePresence mode="wait">
+          <PageWrapper key={view}>
+            {view === 'dashboard' && (
+              <Dashboard user={user} metrics={metrics} trades={tradeHistory} onExecute={() => setShowWizard(true)} />
+            )}
+            {view === 'strategy' && <StrategySettings user={user} onUpdate={setUser} />}
+            {view === 'journal' && (
+              <ReflectiveJournal trades={tradeHistory} userId={user._id} onTradeLogged={() => fetchTradeHistory(user._id)} />
+            )}
+          </PageWrapper>
+        </AnimatePresence>
+      </AppShell>
 
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button onClick={() => setShowGuide(true)} className="btn btn-outline">
-            <HelpCircle size={16} /> Manual
-          </button>
-
-          <button onClick={() => setShowWizard(true)} className="btn btn-primary">
-            <Zap size={16} fill="white" /> EXECUTE TRADE
-          </button>
-          
-          <button onClick={handleLogout} className="btn btn-outline">
-            <LogOut size={16} /> Logout
-          </button>
-        </div>
-      </header>
-
-      {/* NAVIGATION PILLS */}
-      <div>
-        <nav className="nav-pills">
-          <button className={`nav-item ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>
-            <LayoutDashboard size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }}/> Dashboard
-          </button>
-          <button className={`nav-item ${view === 'strategy' ? 'active' : ''}`} onClick={() => setView('strategy')}>
-            <Settings size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }}/> Strategy
-          </button>
-          <button className={`nav-item ${view === 'journal' ? 'active' : ''}`} onClick={() => setView('journal')}>
-            <BookOpen size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }}/> Journal
-          </button>
-        </nav>
-      </div>
-
-      <main className="app-content">
-        {view === 'dashboard' && <BehaviouralFeedbackPanel user={user} metrics={metrics} trades={tradeHistory} />}
-        {view === 'strategy' && <StrategySettings user={user} onUpdate={setUser} />}
-        {view === 'journal' && <ReflectiveJournal trades={tradeHistory} userId={user._id} onTradeLogged={() => fetchTradeHistory(user._id)} />}
-      </main>
-
-      {/* MODALS */}
       {showWizard && (
         <div className="wizard-overlay">
           <TradeExecutionWizard
@@ -156,8 +132,10 @@ function App() {
         </div>
       )}
 
-      {showGuide && <Guidebook onClose={() => setShowGuide(false)} />}
-    </div>
+      <AnimatePresence>
+        {showGuide && <Guidebook onClose={() => setShowGuide(false)} />}
+      </AnimatePresence>
+    </>
   );
 }
 

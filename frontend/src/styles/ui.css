@@ -1,0 +1,126 @@
+/* =========================================================================
+   Shared UI primitives — cards, buttons, badges, meters.
+   Used across every authenticated page.
+   ========================================================================= */
+
+/* ---------- Card ---------- */
+.card {
+  position: relative;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  transition: border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+.card.is-interactive:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 12px var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.card-title svg { color: var(--text-dim); }
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  font: 600 14px var(--font-body);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur) var(--ease-out),
+    background var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out),
+    color var(--dur) var(--ease-out);
+}
+.btn:active:not(:disabled) { transform: translateY(1px) scale(0.99); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-primary {
+  color: #00140d;
+  background: var(--primary);
+  box-shadow: var(--glow-primary);
+}
+.btn-primary:hover:not(:disabled) {
+  box-shadow: 0 0 0 1px rgba(0, 229, 160, 0.5), 0 8px 30px rgba(0, 229, 160, 0.32);
+  transform: translateY(-1px);
+}
+
+.btn-outline,
+.btn-ghost {
+  color: var(--text-main);
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+.btn-outline:hover:not(:disabled),
+.btn-ghost:hover:not(:disabled) { border-color: var(--text-muted); background: var(--surface-2); }
+
+.btn-danger {
+  color: #fff;
+  background: var(--danger);
+  box-shadow: 0 0 0 1px rgba(255, 77, 109, 0.4), 0 0 24px rgba(255, 77, 109, 0.25);
+}
+
+/* ---------- Badges & chips ---------- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font: 700 11px var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+.badge-up { color: var(--primary); background: var(--primary-soft); border-color: rgba(0, 229, 160, 0.22); }
+.badge-down { color: var(--danger); background: var(--danger-soft); border-color: rgba(255, 77, 109, 0.25); }
+.badge-warn { color: var(--warning); background: var(--warning-soft); border-color: rgba(255, 181, 71, 0.25); }
+.badge-neutral { color: var(--text-muted); background: var(--surface-3); border-color: var(--border-strong); }
+.badge-accent { color: #b6a6ff; background: var(--accent-soft); border-color: rgba(124, 92, 255, 0.3); }
+
+/* ---------- Meter bar ---------- */
+.meter {
+  height: 6px;
+  border-radius: 6px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: currentColor;
+  box-shadow: 0 0 12px currentColor;
+  transition: width 900ms var(--ease-out);
+}
+
+/* ---------- Empty state ---------- */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 10px;
+  padding: 36px 16px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.empty svg { color: var(--text-dim); }

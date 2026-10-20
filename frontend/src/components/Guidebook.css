@@ -1,0 +1,68 @@
+.guide-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: radial-gradient(circle at 50% 0%, rgba(124, 92, 255, 0.16), transparent 55%), rgba(3, 5, 8, 0.78);
+  backdrop-filter: blur(6px);
+}
+
+.guide-modal {
+  width: 100%;
+  max-width: 560px;
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-strong);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  box-shadow: var(--shadow-lg);
+}
+
+.guide-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 22px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.guide-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: var(--glow-primary);
+}
+.guide-head h2 { margin: 0; font-size: 20px; }
+.guide-head p { margin: 2px 0 0; font-size: 13px; color: var(--text-muted); }
+.guide-close { margin-left: auto; }
+
+.guide-body { padding: 18px 22px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+
+.guide-section {
+  --g: var(--text-muted);
+  padding: 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--g);
+  background: var(--bg-elev);
+}
+.guide-section.g-up { --g: var(--primary); }
+.guide-section.g-down { --g: var(--danger); }
+.guide-section.g-info { --g: var(--info); }
+.guide-section.g-accent { --g: var(--accent); }
+
+.guide-section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.guide-section-icon { color: var(--g); display: grid; }
+.guide-section-head h3 { margin: 0; font-size: 15px; flex: 1; }
+.guide-section p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-muted); }
+
+.guide-foot { padding: 16px 22px 22px; border-top: 1px solid var(--border); }
+.guide-foot .btn { width: 100%; padding: 12px; }
