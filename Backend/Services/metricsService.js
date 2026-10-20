@@ -67,15 +67,15 @@ exports.generateUserMetrics = (user, trades = [], now = new Date()) => {
     winRate = Math.round((winningTradesAllTime.length / trades.length) * 100);
 
     const losingTradesAllTime = trades.filter(t => toNumber(t.pnl) < 0);
+    // Average hold time in minutes. Trades with an unknown duration (no entry
+    // time, or entry == exit as with some broker imports) are excluded rather
+    // than counted as zero-minute holds, which would skew the ratio.
     const avgMinutes = arr => {
-      if (!arr.length) return 0;
-      const total = arr.reduce((acc, t) => {
-        const entry = parseDate(t.entryTime)?.getTime();
-        const exit = parseDate(t.exitTime)?.getTime();
-        if (!entry || !exit) return acc;
-        return acc + Math.max(0, exit - entry);
-      }, 0);
-      return total / (1000 * 60) / arr.length;
+      const durations = arr
+        .map(t => (parseDate(t.exitTime)?.getTime() || 0) - (parseDate(t.entryTime)?.getTime() || 0))
+        .filter(ms => ms > 0);
+      if (!durations.length) return 0;
+      return durations.reduce((a, b) => a + b, 0) / (1000 * 60) / durations.length;
     };
 
     const avgWin = avgMinutes(winningTradesAllTime);

@@ -31,7 +31,8 @@ const TradeSchema = new mongoose.Schema(
     
     riskPercentage: {
       type: Number,
-      required: true,
+      // Brokers don't report risk-as-%-of-account; only manual logs must have it.
+      required: function () { return !this.source || this.source === 'manual'; },
       min: 0.01,
       max: 100
     },
@@ -78,13 +79,20 @@ const TradeSchema = new mongoose.Schema(
     // Where the record came from: logged by hand, or imported from a broker.
     source: {
       type: String,
-      enum: ["manual", "oanda", "alpaca", "binance", "mt-csv"],
+      enum: ["manual", "oanda", "alpaca", "binance", "mt-csv", "csv"],
       default: "manual"
     },
 
     // Broker-side trade id, used to de-duplicate imports.
     externalId: {
       type: String
+    },
+
+    // Imported trades arrive without psychology; the trader confirms plan
+    // adherence and mood afterwards. Adherence is never pre-claimed.
+    needsReview: {
+      type: Boolean,
+      default: false
     }
   },
   {

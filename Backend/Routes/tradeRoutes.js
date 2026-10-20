@@ -3,13 +3,8 @@ const router = express.Router();
 const Trade = require("../Models/Trade");
 const metricsService = require("../Services/metricsService");
 const { protect } = require('../Middleware/authMiddleware');
-
-// Authoritative firewall state for a user, computed on the server so the
-// client cannot bypass it (dissertation §4.4 / Objective 3 limitation).
-async function firewallState(user) {
-    const trades = await Trade.find({ userId: user._id }).sort({ entryTime: 1 });
-    return metricsService.generateUserMetrics(user, trades);
-}
+const { firewallState } = require("../Services/firewall");
+const { reconcileLocksQuietly } = require("../Services/brokers");
 
 const lockMessage = (state) =>
     state.lockReason === 'daily_limit'
@@ -92,6 +87,8 @@ router.post("/", protect, async (req, res) => {
         // Trust the authenticated user, never a client-supplied userId
         const newTrade = new Trade({ ...req.body, userId: req.user._id, source: 'manual' });
         const savedTrade = await newTrade.save();
+        // This trade may have tipped the firewall into a lock: mirror it to brokers.
+        reconcileLocksQuietly(req.user);
         res.status(201).json(savedTrade);
     } catch (err) {
         res.status(400).json({ message: err.message });
@@ -116,12 +113,46 @@ router.get("/user/:userId", protect, async (req, res) => {
 router.get("/metrics/:userId", protect, async (req, res) => {
     try {
         // Scope to the authenticated user; ignore the :userId param (IDOR guard)
-        res.json(await firewallState(req.user));
+        const state = await firewallState(req.user);
+        // Lazy reconcile: engages broker blocks on lock, releases them on reopen.
+        reconcileLocksQuietly(req.user, state);
+        res.json(state);
     } catch (err) {
         console.error("Metrics Error:", err);
         res.status(500).json({ message: err.message });
     }
 });
 
+// 4. REVIEW / ANNOTATE — the trader adds psychology to a trade after the fact
+// (mainly broker imports, which arrive with needsReview: true).
+const MOODS = Trade.schema.path('mood').enumValues;
+router.patch("/:id", protect, async (req, res) => {
+    try {
+        const trade = await Trade.findOne({ _id: req.params.id, userId: req.user._id });
+        if (!trade) return res.status(404).json({ message: 'Trade not found' });
+
+        const { followedPlan, mood, notes } = req.body || {};
+        if (followedPlan !== undefined) {
+            const next = Boolean(followedPlan);
+            // Re-labelling a broken-plan trade as compliant lowers revenge
+            // risk, so it's not allowed while the firewall is locked.
+            if (next && !trade.followedPlan) {
+                const state = await firewallState(req.user);
+                if (state.isLocked) return lockedResponse(res, state);
+            }
+            trade.followedPlan = next;
+        }
+        if (mood !== undefined) {
+            if (!MOODS.includes(mood)) return res.status(400).json({ message: 'Invalid mood' });
+            trade.mood = mood;
+        }
+        if (notes !== undefined) trade.notes = String(notes).slice(0, 500);
+        trade.needsReview = false;
+        await trade.save();
+        res.json(trade);
+    } catch (err) {
+        res.status(400).json({ message: err.message });
+    }
+});
+
 module.exports = router;
-module.exports.firewallState = firewallState;

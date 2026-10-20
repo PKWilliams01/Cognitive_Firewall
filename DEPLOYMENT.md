@@ -78,6 +78,34 @@ signing anyone in.
 > preview URLs won't show a working Google button — test Google sign-in on the
 > production URL (or localhost).
 
+## 6. Broker connections
+
+Settings → **Connected brokers** lets traders link OANDA, Alpaca or Binance
+Futures to import closed trades automatically, and optionally let the Hard Lock
+act on the broker account. MetaTrader 4/5 and prop-firm accounts use CSV upload,
+which needs no configuration.
+
+- Render generates `BROKER_ENCRYPTION_KEY` automatically (see `render.yaml`).
+  API keys are encrypted with it before they reach the database and are never
+  returned to the browser. **Don't rotate it** — existing connections would
+  have to be reconnected.
+- Without the key, live connections are disabled (the UI says so); CSV import
+  still works.
+- Imported trades arrive as *plan broken / needs review*. The trader confirms
+  plan adherence and mood in the Journal. Adherence is never assumed.
+- What "enforce Hard Lock" can actually do differs by broker:
+
+  | Broker          | On lock                                  | Blocks new orders? |
+  |-----------------|------------------------------------------|--------------------|
+  | Alpaca          | `suspend_trade` + cancel open orders     | Yes (account-level) |
+  | OANDA           | Cancel pending orders                    | No                 |
+  | Binance Futures | Cancel open orders on every symbol       | No                 |
+
+  Open positions are never closed. The lock is mirrored when a trade is logged
+  or metrics are fetched, and released the same way once the firewall reopens.
+
+Test with practice/paper/testnet keys first.
+
 ---
 
 ## Environment variable summary
@@ -89,6 +117,7 @@ signing anyone in.
 | `CLIENT_URL`                 | Render    | the Vercel frontend origin                |
 | `NODE_ENV`                   | Render    | `production` (from `render.yaml`)         |
 | `GOOGLE_CLIENT_ID`           | Render    | Google OAuth client ID (optional)         |
+| `BROKER_ENCRYPTION_KEY`      | Render    | auto-generated; enables broker connections |
 | `REACT_APP_API_URL`          | Vercel    | the Render backend origin                 |
 | `REACT_APP_GOOGLE_CLIENT_ID` | Vercel    | same Google OAuth client ID (optional)    |
 

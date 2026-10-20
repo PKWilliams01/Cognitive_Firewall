@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Plus, Search, CircleCheck, CircleX, Timer, HeartPulse, Trash2, BookOpen, X,
+  Plus, Search, CircleCheck, CircleX, Timer, HeartPulse, Trash2, BookOpen, X, ClipboardCheck,
 } from 'lucide-react';
 import api, { errorMessage } from '../api/client';
 import { useToast } from './Toast';
@@ -13,6 +13,7 @@ const FILTERS = [
   { id: 'wins', label: 'Wins' },
   { id: 'losses', label: 'Losses' },
   { id: 'broken', label: 'Plan broken' },
+  { id: 'review', label: 'Needs review' },
 ];
 
 const MOODS = ['Calm', 'Confident', 'Neutral', 'Anxious', 'Greedy', 'Angry'];
@@ -113,9 +114,12 @@ function TradesTab({ trades, onTradeLogged }) {
       if (filter === 'wins') return toNumber(t.pnl) > 0;
       if (filter === 'losses') return toNumber(t.pnl) < 0;
       if (filter === 'broken') return !t.followedPlan;
+      if (filter === 'review') return t.needsReview;
       return true;
     });
   }, [trades, filter, query]);
+
+  const reviewCount = useMemo(() => trades.filter((t) => t.needsReview).length, [trades]);
 
   const groups = useMemo(() => {
     const map = new Map();
@@ -153,6 +157,13 @@ function TradesTab({ trades, onTradeLogged }) {
         </button>
       </div>
 
+      {reviewCount > 0 && filter !== 'review' && (
+        <button className="card jr-review-banner" onClick={() => setFilter('review')}>
+          <ClipboardCheck size={16} />
+          <span><strong>{reviewCount} imported trade{reviewCount === 1 ? '' : 's'}</strong> waiting for review. Imports count as plan-broken until you confirm how they went.</span>
+        </button>
+      )}
+
       <AnimatePresence>
         {showForm && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden' }}>
@@ -174,7 +185,7 @@ function TradesTab({ trades, onTradeLogged }) {
           <section key={day} className="jr-day" aria-label={day}>
             <h3 className="jr-day-title">{day}</h3>
             <div className="jr-list">
-              {list.map((t, i) => <TradeCard key={t._id || i} t={t} i={i} />)}
+              {list.map((t, i) => <TradeCard key={t._id || i} t={t} i={i} onUpdated={onTradeLogged} />)}
             </div>
           </section>
         ))
@@ -183,7 +194,8 @@ function TradesTab({ trades, onTradeLogged }) {
   );
 }
 
-function TradeCard({ t, i }) {
+function TradeCard({ t, i, onUpdated }) {
+  const [reviewing, setReviewing] = useState(false);
   const pnl = toNumber(t.pnl);
   const hold = holdTime(t);
   return (
@@ -211,7 +223,62 @@ function TradeCard({ t, i }) {
         {t.source && t.source !== 'manual' && <span className="badge badge-accent">{t.source.toUpperCase()}</span>}
       </div>
       {t.notes && <p className="jr-trade-notes">{t.notes}</p>}
+      {t.needsReview && !reviewing && (
+        <button className="btn btn-ghost jr-review-btn" onClick={() => setReviewing(true)}>
+          <ClipboardCheck size={14} /> Review trade
+        </button>
+      )}
+      <AnimatePresence>
+        {reviewing && <ReviewForm t={t} onDone={() => { setReviewing(false); onUpdated?.(); }} onCancel={() => setReviewing(false)} />}
+      </AnimatePresence>
     </motion.article>
+  );
+}
+
+// Adds the psychology a broker import can't know: plan adherence, mood, notes.
+function ReviewForm({ t, onDone, onCancel }) {
+  const toast = useToast();
+  const [followedPlan, setFollowedPlan] = useState(null);
+  const [mood, setMood] = useState('Neutral');
+  const [notes, setNotes] = useState(t.notes || '');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (followedPlan === null) return toast.error('Did this trade follow your plan?');
+    setBusy(true);
+    try {
+      await api.patch(`/api/trades/${t._id}`, { followedPlan, mood, notes });
+      toast.success('Trade reviewed');
+      onDone();
+    } catch (err) {
+      toast.error(errorMessage(err, 'Could not save the review'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <motion.form className="jr-review" onSubmit={submit} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
+      <div className="seg" role="radiogroup" aria-label="Plan adherence">
+        <button type="button" role="radio" aria-checked={followedPlan === true} className={`seg-btn is-long ${followedPlan === true ? 'is-on' : ''}`} onClick={() => setFollowedPlan(true)}>
+          <CircleCheck size={14} /> Followed plan
+        </button>
+        <button type="button" role="radio" aria-checked={followedPlan === false} className={`seg-btn is-short ${followedPlan === false ? 'is-on' : ''}`} onClick={() => setFollowedPlan(false)}>
+          <CircleX size={14} /> Broke plan
+        </button>
+      </div>
+      <div className="jr-review-moods" role="group" aria-label="Mood">
+        {MOODS.map((m) => (
+          <button type="button" key={m} className={`chip ${mood === m ? 'is-on' : ''}`} aria-pressed={mood === m} onClick={() => setMood(m)}>{m}</button>
+        ))}
+      </div>
+      <textarea className="input" rows={2} maxLength={500} placeholder="What was going through your head?" value={notes} onChange={(e) => setNotes(e.target.value)} aria-label="Review notes" />
+      <div className="jr-review-actions">
+        <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+        <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Save review'}</button>
+      </div>
+    </motion.form>
   );
 }
 
