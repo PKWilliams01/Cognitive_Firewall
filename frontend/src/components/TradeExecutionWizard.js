@@ -1,279 +1,405 @@
-import React, { useState, useEffect } from 'react';
-import { AlertTriangle, ShieldCheck, Activity, Lock } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+  X, ShieldCheck, Lock, Activity, TrendingUp, TrendingDown, CircleCheck, Circle, Timer, Flag, Sparkles,
+} from 'lucide-react';
 import api, { errorMessage } from '../api/client';
 import { useToast } from './Toast';
+import { parseRules } from '../utils/rules';
+import { INSTRUMENT_GROUPS, normaliseItem } from '../utils/instruments';
+import './TradeExecutionWizard.css';
 
-// Added revengeRisk to the props
-const TradeExecutionWizard = ({ userId, onTradeSuccess, user, onClose, revengeRisk = 0, firewall }) => {
-    const toast = useToast();
-    const [phase, setPhase] = useState('PRE_FLIGHT');
-    const [instrument, setInstrument] = useState('');
-    const [direction, setDirection] = useState('buy');
-    const [risk, setRisk] = useState('1.0'); 
-    const [checkedRules, setCheckedRules] = useState({});
-    
-    const [entryTime, setEntryTime] = useState(null);
-    const [pnl, setPnl] = useState('');
-    const [mood, setMood] = useState('Neutral');
-    // Default to unchecked: a discipline tool must not pre-claim adherence
-    // on the user's behalf, or it silently inflates the discipline score.
-    const [followedPlan, setFollowedPlan] = useState(false);
-    const [notes, setNotes] = useState('');
-    
-    const [loading, setLoading] = useState(false);
-    const [tradesToday, setTradesToday] = useState(0); 
+const STEPS = [
+  { id: 'PRE_FLIGHT', label: 'Pre-flight' },
+  { id: 'LIVE', label: 'Live' },
+  { id: 'DEBRIEF', label: 'Debrief' },
+];
 
-   useEffect(() => {
-        if (!user) return;
-        
-        const fetchTodayTrades = async () => {
-            try {
-                const res = await api.get(`/api/trades/user/${user._id}`);
-                const todayStr = new Date().toDateString();
-                const count = (res.data || []).filter(t => new Date(t.entryTime || t.timestamp).toDateString() === todayStr).length;
-                setTradesToday(count);
-            } catch {
-                // the server re-checks limits at pre-flight anyway
-            }
-        };
+const MOODS = [
+  { value: 'Calm', label: 'Calm', emoji: '🧘' },
+  { value: 'Confident', label: 'Confident', emoji: '💪' },
+  { value: 'Neutral', label: 'Neutral', emoji: '😐' },
+  { value: 'Anxious', label: 'Anxious', emoji: '😰' },
+  { value: 'Greedy', label: 'Greedy', emoji: '🤑' },
+  { value: 'Angry', label: 'Angry', emoji: '😤' },
+];
 
-        fetchTodayTrades();
-    }, [user]);
+const elapsed = (from, now) => {
+  const s = Math.max(0, Math.floor((now - from) / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return h ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
+};
 
-    // --- LIMIT & LOCK CALCULATIONS ---
-    const MAX_TRADES = Number(firewall?.dailyLimit || user.plannedDailyLimit || 3);
-    const rulesList = user.tradingPlanRules || [];
-    // Prefer the server's authoritative count; fall back to the local one.
-    const tradesRemaining = firewall?.tradesRemaining ?? Math.max(0, MAX_TRADES - tradesToday);
+const slide = {
+  initial: { opacity: 0, x: 24 },
+  animate: { opacity: 1, x: 0, transition: { duration: 0.32, ease: [0.16, 1, 0.3, 1] } },
+  exit: { opacity: 0, x: -24, transition: { duration: 0.18 } },
+};
 
-    const isOverLimit = firewall ? firewall.lockReason === 'daily_limit' : tradesRemaining <= 0;
-    const isTilted = firewall ? firewall.lockReason === 'revenge' : revengeRisk >= 80;
+export default function TradeExecutionWizard({ user, firewall, onClose, onTradeSuccess, onLocked }) {
+  const toast = useToast();
+  const [phase, setPhase] = useState('PRE_FLIGHT');
+  const [instrument, setInstrument] = useState('');
+  const [direction, setDirection] = useState('buy');
+  const [risk, setRisk] = useState('1.0');
+  const [checked, setChecked] = useState({});
+  const [entryTime, setEntryTime] = useState(null);
+  const [now, setNow] = useState(Date.now());
+  const [pnl, setPnl] = useState('');
+  const [mood, setMood] = useState('Neutral');
+  // Default to unchecked: never pre-claim adherence on the user's behalf.
+  const [followedPlan, setFollowedPlan] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
-    // The system locks if THEY OVERTRADE -OR- THEY ARE TILTED
-    const isHardLocked = firewall?.isLocked ?? (isOverLimit || isTilted);
+  const rules = useMemo(() => parseRules(user?.tradingPlanRules || []), [user?.tradingPlanRules]);
+  const hardRules = rules.filter((r) => r.hard);
+  const checkedCount = rules.filter((r) => checked[r.id]).length;
+  const hardChecked = hardRules.filter((r) => checked[r.id]).length;
 
-    // --- HANDLERS ---
-    const handleStartTrade = async () => {
-        if (isHardLocked || loading) return;
+  const cap = Number(firewall?.maxRiskPercent ?? user?.maxRiskPercent ?? 5);
+  const dailyLimit = Number(firewall?.dailyLimit ?? user?.plannedDailyLimit ?? 3);
+  const tradesRemaining = firewall?.tradesRemaining ?? dailyLimit;
+  const locked = Boolean(firewall?.isLocked);
+  const strict = user?.strictConfluence ?? true;
 
-        if (!instrument) return toast.error('Select an asset before running the pre-flight.');
-        const numericRisk = Number(risk);
-        if (!risk || numericRisk <= 0) return toast.error('Enter a risk percentage greater than 0.');
+  const numericRisk = Number(risk);
+  const riskError = !risk ? 'Enter your risk' : !(numericRisk > 0) ? 'Must be above 0' : numericRisk > cap ? `Above your ${cap}% cap` : '';
+  const missingHard = hardRules.length - hardChecked;
+  const missingStrict = strict && rules.length > 0 && checkedCount < rules.length;
+  const blockReason = locked
+    ? 'Execution locked'
+    : !instrument
+      ? 'Choose an instrument'
+      : riskError
+        ? riskError
+        : missingHard > 0
+          ? `Confirm ${missingHard} hard rule${missingHard === 1 ? '' : 's'}`
+          : missingStrict
+            ? `Confirm all ${rules.length} rules (strict mode)`
+            : '';
 
-        const ticks = Object.values(checkedRules).filter(val => val === true).length;
+  // Live position timer
+  useEffect(() => {
+    if (phase !== 'LIVE') return undefined;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [phase]);
 
-        // The server is the authority: lock state, risk cap and strict-confluence mode.
-        setLoading(true);
-        try {
-            await api.post('/api/trades/preflight', {
-                instrument,
-                direction,
-                riskPercentage: numericRisk,
-                confluencesChecked: ticks,
-                confluencesTotal: rulesList.length,
-            });
-            if (rulesList.length > 0 && ticks < rulesList.length) {
-                toast.info(`Approved with ${ticks}/${rulesList.length} confluences. Trading without full confluence reduces your edge.`);
-            }
-            setEntryTime(new Date());
-            setPhase('LIVE');
-        } catch (err) {
-            const message = errorMessage(err, 'Pre-flight failed.');
-            if (err?.response?.status === 423) toast.lock(message);
-            else toast.error(message);
-        } finally {
-            setLoading(false);
-        }
+  // Esc closes from pre-flight; mid-trade it asks first.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      if (phase === 'PRE_FLIGHT') onClose?.();
+      else setConfirmLeave(true);
     };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [phase, onClose]);
 
-    const handleCloseTrade = async () => {
-    if (pnl === '' || !Number.isFinite(Number(pnl))) return toast.error('Enter the final P/L for this trade.');
-    
-    setLoading(true);
-    const numPnL = Number(pnl);
-    
-    const tradeData = {
-        userId: user?._id,
-        instrument: instrument,
+  const requestClearance = async () => {
+    if (blockReason || busy) return;
+    setBusy(true);
+    try {
+      const res = await api.post('/api/trades/preflight', {
+        instrument,
+        direction,
+        riskPercentage: numericRisk,
+        confluencesChecked: checkedCount,
+        confluencesTotal: rules.length,
+        hardChecked,
+        hardTotal: hardRules.length,
+      });
+      if (rules.length > 0 && checkedCount < rules.length) {
+        toast.info(`Cleared with ${checkedCount}/${rules.length} confluences. Skipped rules reduce your edge.`);
+      }
+      (res?.data?.warnings || []).filter((w) => w.severity === 'high').forEach((w) => toast.info(w.message));
+      setEntryTime(new Date());
+      setNow(Date.now());
+      setPhase('LIVE');
+    } catch (err) {
+      const message = errorMessage(err, 'Pre-flight failed.');
+      if (err?.response?.status === 423) {
+        toast.lock(message);
+        onLocked?.();
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const logTrade = async () => {
+    const value = Number(pnl);
+    if (pnl === '' || !Number.isFinite(value)) return toast.error('Enter the final P/L for this trade.');
+    setBusy(true);
+    try {
+      await api.post('/api/trades', {
+        instrument,
         direction,
         entryTime,
         exitTime: new Date(),
-        pnl: numPnL,
-        result: numPnL > 0 ? 'win' : numPnL < 0 ? 'loss' : 'breakeven',
+        pnl: value,
+        result: value > 0 ? 'win' : value < 0 ? 'loss' : 'breakeven',
         followedPlan,
         mood,
         notes,
-        riskPercentage: Number(risk) 
-    };
-
-    try {
-        await api.post('/api/trades', tradeData);
-        toast.success('Trade logged. Your metrics are updating.');
-        if (onTradeSuccess) onTradeSuccess();
-        if (onClose) onClose();
+        riskPercentage: numericRisk,
+      });
+      toast.success('Trade logged. Your metrics are updating.');
+      onTradeSuccess?.();
+      onClose?.();
     } catch (err) {
-        const message = errorMessage(err, 'Could not save the trade.');
-        if (err?.response?.status === 423) toast.lock(message);
-        else toast.error(message);
+      const message = errorMessage(err, 'Could not save the trade.');
+      if (err?.response?.status === 423) {
+        toast.lock(message);
+        onLocked?.();
+      } else {
+        toast.error(message);
+      }
     } finally {
-        setLoading(false);
+      setBusy(false);
     }
-};
+  };
 
-    // --- DYNAMIC STYLES ---
-    const styles = {
-        overlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(9, 30, 66, 0.54)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
-        card: { backgroundColor: 'var(--surface)', borderRadius: '16px', width: '100%', maxWidth: '500px', padding: '32px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', position: 'relative', border: '1px solid var(--border)' },
-        closeX: { position: 'absolute', top: '20px', right: '24px', background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: 'var(--text-muted)', lineHeight: '1' },
-        header: { fontSize: '20px', fontWeight: '900', color: 'var(--text-main)', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px' },
-        label: { display: 'block', fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' },
-        input: { width: '100%', backgroundColor: 'var(--background)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: 'var(--text-main)', outline: 'none', marginBottom: '20px', boxSizing: 'border-box' },
-        btnPrimary: { backgroundColor: 'var(--primary)', color: 'white', padding: '14px', borderRadius: '8px', border: 'none', fontWeight: '800', cursor: 'pointer', width: '100%', letterSpacing: '1px' },
-        btnDanger: { backgroundColor: 'var(--danger)', color: 'white', padding: '14px', borderRadius: '8px', border: 'none', fontWeight: '800', cursor: 'pointer', width: '100%', letterSpacing: '1px' },
-        btnLocked: { backgroundColor: 'var(--background)', color: 'var(--text-muted)', border: '1px solid var(--border)', padding: '14px', borderRadius: '8px', fontWeight: '800', cursor: 'not-allowed', width: '100%', letterSpacing: '1px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' },
-        checkItem: { display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'var(--background)', marginBottom: '8px', cursor: 'pointer' }
-    };
+  const stepIndex = STEPS.findIndex((s) => s.id === phase);
+  const closeRequest = () => (phase === 'PRE_FLIGHT' ? onClose?.() : setConfirmLeave(true));
 
-    return (
-        <div style={styles.overlay}>
-            <div style={styles.card} className="wizard-card">
-                <button style={styles.closeX} onClick={onClose}>&times;</button>
+  return (
+    <motion.div
+      className="wiz"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="wiz-title"
+      initial={{ opacity: 0, y: 24, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+    >
+      <header className="wiz-head">
+        <ol className="wiz-steps" aria-label="Trade steps">
+          {STEPS.map((s, i) => (
+            <li key={s.id} className={`wiz-step ${i === stepIndex ? 'is-current' : ''} ${i < stepIndex ? 'is-done' : ''}`} aria-current={i === stepIndex ? 'step' : undefined}>
+              <span className="wiz-step-dot">{i < stepIndex ? <CircleCheck size={14} /> : i + 1}</span>
+              {s.label}
+            </li>
+          ))}
+        </ol>
+        <button className="shell-icon-btn" onClick={closeRequest} aria-label="Close">
+          <X size={18} />
+        </button>
+      </header>
 
-                {phase === 'PRE_FLIGHT' && (
-                    <>
-                        <div style={styles.header}><ShieldCheck size={24} color="var(--primary)" /> Pre-Flight Protocol</div>
-                        
-                        <div style={{ backgroundColor: isOverLimit ? 'rgba(255, 86, 48, 0.1)' : 'var(--background)', border: `1px solid ${isOverLimit ? 'var(--danger)' : 'var(--border)'}`, borderRadius: '12px', padding: '16px', display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
-                            <div>
-                                <div style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', letterSpacing: '1px' }}>DAILY LIMIT</div>
-                                <div style={{ fontSize: '18px', fontWeight: '900', color: 'var(--text-main)' }}>{MAX_TRADES}</div>
-                            </div>
-                            <div style={{ textAlign: 'right' }}>
-                                <div style={{ fontSize: '11px', fontWeight: '800', color: isOverLimit ? 'var(--danger)' : 'var(--text-muted)', letterSpacing: '1px' }}>TRADES REMAINING</div>
-                                <div style={{ fontSize: '18px', fontWeight: '900', color: isOverLimit ? 'var(--danger)' : 'var(--primary)' }}>{tradesRemaining}</div>
-                            </div>
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: '12px' }}>
-                            <div>
-                                <label style={styles.label}>Asset</label>
-                                <select style={styles.input} value={instrument} onChange={e => setInstrument(e.target.value)}>
-                                    <option value="" disabled style={{ color: 'black' }}>Select...</option>
-                                    <optgroup label="Forex" style={{ color: 'black' }}>
-                                        <option value="EUR/USD" style={{ color: 'black' }}>EUR/USD</option>
-                                        <option value="GBP/USD" style={{ color: 'black' }}>GBP/USD</option>
-                                        <option value="USD/JPY" style={{ color: 'black' }}>USD/JPY</option>
-                                        <option value="GBP/JPY" style={{ color: 'black' }}>GBP/JPY</option>
-                                    </optgroup>
-                                    <optgroup label="Metals" style={{ color: 'black' }}>
-                                        <option value="XAU/USD" style={{ color: 'black' }}>XAU/USD (Gold)</option>
-                                        <option value="XAG/USD" style={{ color: 'black' }}>XAG/USD (Silver)</option>
-                                    </optgroup>
-                                    <optgroup label="Indices" style={{ color: 'black' }}>
-                                        <option value="US30" style={{ color: 'black' }}>US30 (Dow Jones)</option>
-                                        <option value="NAS100" style={{ color: 'black' }}>NAS100 (Nasdaq)</option>
-                                    </optgroup>
-                                    <optgroup label="Crypto" style={{ color: 'black' }}>
-                                        <option value="BTC/USD" style={{ color: 'black' }}>BTC/USD (Bitcoin)</option>
-                                        <option value="ETH/USD" style={{ color: 'black' }}>ETH/USD (Ethereum)</option>
-                                    </optgroup>
-                                </select>
-                            </div>
-                            <div>
-                                <label style={styles.label}>Side</label>
-                                <select style={styles.input} value={direction} onChange={e => setDirection(e.target.value)}>
-                                    <option value="buy"style={{ color: 'black' }}>Long</option>
-                                    <option value="sell" style={{ color: 'black' }}>Short</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style={styles.label}>Risk %</label>
-                                <input style={styles.input} type="number" step="0.1" placeholder="1.0" value={risk} onChange={e => setRisk(e.target.value)} />
-                            </div>
-                        </div>
-
-                        <label style={styles.label}>Verify Confluences</label>
-                        <div style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: '24px' }}>
-                            {rulesList.length === 0 ? (
-                                <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic', padding: '10px 0' }}>No strategy rules configured yet.</div>
-                            ) : (
-                                rulesList.map((rule, i) => (
-                                    <label key={i} style={styles.checkItem}>
-                                        <input type="checkbox" style={{ width: '18px', height: '18px' }} checked={!!checkedRules[i]} onChange={e => setCheckedRules({...checkedRules, [i]: e.target.checked})} />
-                                        <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-main)' }}>{rule}</span>
-                                    </label>
-                                ))
-                            )}
-                        </div>
-
-                        {/* ITERATION 2 FIX: The Comprehensive Hard Lock Protocol */}
-                        {isHardLocked ? (
-                            <button style={styles.btnLocked} disabled={true}>
-                                <Lock size={18} /> 
-                                {isOverLimit ? "SYSTEM LOCKED: DAILY LIMIT REACHED" : "SYSTEM LOCKED: CRITICAL REVENGE RISK"}
-                            </button>
-                        ) : (
-                            <button style={styles.btnPrimary} onClick={handleStartTrade}>INITIALIZE EXECUTION</button>
-                        )}
-                    </>
-                )}
-
-                {phase === 'LIVE' && (
-                    <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
-                            <Activity size={48} color="var(--primary)" />
-                        </div>
-                        <div style={{ backgroundColor: 'rgba(54, 179, 126, 0.1)', color: 'var(--primary)', padding: '6px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: '900', display: 'inline-block', marginBottom: '16px', letterSpacing: '1px' }}>
-                            POSITION ACTIVE
-                        </div>
-                        <h2 style={{ fontSize: '42px', fontWeight: '900', color: 'var(--text-main)', margin: '0 0 8px 0', textTransform: 'uppercase' }}>{instrument}</h2>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '40px', fontWeight: '500' }}>Maintain discipline. Adhere to your stop loss and take profit targets.</p>
-                        <button style={styles.btnDanger} onClick={() => setPhase('POST_MORTEM')}>TERMINATE POSITION</button>
-                    </div>
-                )}
-
-                {phase === 'POST_MORTEM' && (
-                    <>
-                        <div style={styles.header}><AlertTriangle size={24} color="var(--warning)" /> Post-Mortem Debrief</div>
-                        
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '16px' }}>
-                            <div>
-                                <label style={styles.label}>PnL ($)</label>
-                                <input style={styles.input} type="number" placeholder="-500 or 1200" value={pnl} onChange={e => setPnl(e.target.value)} autoFocus />
-                            </div>
-                            <div>
-                                <label style={styles.label}>Primary Emotion</label>
-                                <select style={styles.input} value={mood} onChange={e => setMood(e.target.value)}>
-                                    <option value="Calm">Calm & Collected</option>
-                                    <option value="Neutral">Neutral</option>
-                                    <option value="Anxious">Anxious / Fearful</option>
-                                    <option value="Greedy">Overconfident / Greedy</option>
-                                    <option value="Angry">Angry / Tilted</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <label style={styles.label}>Reflective Notes</label>
-                        <textarea 
-                            style={{ ...styles.input, height: '80px', resize: 'vertical' }} 
-                            placeholder="Why did you exit? Did you panic, or hit your target?" 
-                            value={notes} 
-                            onChange={e => setNotes(e.target.value)} 
-                        />
-                        
-                        <label style={{ ...styles.checkItem, marginBottom: '24px' }}>
-                            <input type="checkbox" checked={followedPlan} onChange={e => setFollowedPlan(e.target.checked)} />
-                            <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-main)' }}>I strictly followed my exit rules</span>
-                        </label>
-                        
-                        <button style={styles.btnPrimary} onClick={handleCloseTrade} disabled={loading}>
-                            {loading ? 'SYNCING...' : 'FINALIZE & SYNC LEDGER'}
-                        </button>
-                    </>
-                )}
+      <AnimatePresence>
+        {confirmLeave && (
+          <motion.div className="wiz-leave" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
+            <span>Leave without logging this trade? It won’t count toward your metrics.</span>
+            <div>
+              <button className="btn btn-ghost" onClick={() => setConfirmLeave(false)}>Stay</button>
+              <button className="btn btn-danger" onClick={() => onClose?.()}>Leave</button>
             </div>
-        </div>
-    );
-};
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-export default TradeExecutionWizard;
+      <div className="wiz-body">
+        <AnimatePresence mode="wait" initial={false}>
+          {phase === 'PRE_FLIGHT' && (
+            <motion.section key="pre" {...slide}>
+              <h2 id="wiz-title">Pre-flight check</h2>
+              <p className="wiz-lead">Confirm the setup before you enter. The firewall clears or blocks this trade on the server.</p>
+
+              <div className="wiz-status">
+                <StatusPill icon={Flag} label="Trades left today" value={`${tradesRemaining}/${dailyLimit}`} tone={tradesRemaining <= 1 ? 'warn' : 'ok'} />
+                <StatusPill icon={Activity} label="Revenge risk" value={`${firewall?.revengeRisk ?? 0}%`} tone={(firewall?.revengeRisk ?? 0) >= 50 ? 'warn' : 'ok'} />
+                <StatusPill icon={ShieldCheck} label="Risk cap" value={`${cap}%`} tone="ok" />
+              </div>
+
+              {locked ? (
+                <div className="wiz-locked" role="alert">
+                  <Lock size={20} />
+                  <div>
+                    <strong>{firewall?.lockReason === 'daily_limit' ? 'Daily limit reached' : 'Hard Lock engaged'}</strong>
+                    <p>{firewall?.lockReason === 'daily_limit' ? 'You’ve used every trade your plan allows today.' : 'Revenge risk is critical. The server will refuse new trades until you’ve cooled off.'}</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="wiz-grid">
+                    <label className="field">
+                      <span className="field-label">Instrument</span>
+                      <select className="input" value={instrument} onChange={(e) => setInstrument(e.target.value)} aria-label="Instrument">
+                        <option value="">Select…</option>
+                        {INSTRUMENT_GROUPS.map((g) => (
+                          <optgroup key={g.group} label={g.group}>
+                            {g.items.map(normaliseItem).map((it) => <option key={it.value} value={it.value}>{it.label}</option>)}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="field">
+                      <span className="field-label">Direction</span>
+                      <div className="seg" role="radiogroup" aria-label="Direction">
+                        <button type="button" role="radio" aria-checked={direction === 'buy'} className={`seg-btn is-long ${direction === 'buy' ? 'is-on' : ''}`} onClick={() => setDirection('buy')}>
+                          <TrendingUp size={15} /> Long
+                        </button>
+                        <button type="button" role="radio" aria-checked={direction === 'sell'} className={`seg-btn is-short ${direction === 'sell' ? 'is-on' : ''}`} onClick={() => setDirection('sell')}>
+                          <TrendingDown size={15} /> Short
+                        </button>
+                      </div>
+                    </div>
+
+                    <label className="field">
+                      <span className="field-label">Risk (% of account)</span>
+                      <div className="wiz-suffix">
+                        <input className={`input ${riskError && risk !== '' ? 'is-invalid' : ''}`} type="number" min="0.01" step="0.1" value={risk} onChange={(e) => setRisk(e.target.value)} aria-label="Risk percent" />
+                        <span>%</span>
+                      </div>
+                      <span className={`field-hint ${riskError && risk !== '' ? 'is-error' : ''}`}>{riskError && risk !== '' ? riskError : `Cap ${cap}% per trade`}</span>
+                    </label>
+                  </div>
+
+                  <div className="wiz-rules">
+                    <div className="wiz-rules-head">
+                      <span className="field-label">Confluences</span>
+                      {rules.length > 0 && <span className="mono wiz-rules-count">{checkedCount}/{rules.length} confirmed</span>}
+                    </div>
+                    {rules.length > 0 && (
+                      <div className="meter wiz-rules-meter" style={{ color: checkedCount === rules.length ? 'var(--primary)' : 'var(--warning)' }}>
+                        <span style={{ width: `${(checkedCount / rules.length) * 100}%` }} />
+                      </div>
+                    )}
+                    {rules.length === 0 ? (
+                      <p className="wiz-empty-rules"><Sparkles size={14} /> No rules yet. Add your checklist in Strategy and it appears here.</p>
+                    ) : (
+                      <ul>
+                        {rules.map((r) => (
+                          <li key={r.id}>
+                            <label className={`wiz-rule ${checked[r.id] ? 'is-checked' : ''}`}>
+                              <input type="checkbox" checked={Boolean(checked[r.id])} onChange={(e) => setChecked((c) => ({ ...c, [r.id]: e.target.checked }))} />
+                              {checked[r.id] ? <CircleCheck size={18} className="wiz-rule-icon" /> : <Circle size={18} className="wiz-rule-icon" />}
+                              <span className="wiz-rule-label">{r.label}</span>
+                              {r.hard && <span className="badge badge-down">Hard</span>}
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </>
+              )}
+
+              <div className="wiz-actions">
+                {blockReason && !locked && <span className="wiz-block-reason">{blockReason}</span>}
+                <button className="btn btn-primary wiz-primary" onClick={requestClearance} disabled={Boolean(blockReason) || busy}>
+                  <ShieldCheck size={16} /> {busy ? 'Checking…' : 'Request clearance'}
+                </button>
+              </div>
+            </motion.section>
+          )}
+
+          {phase === 'LIVE' && (
+            <motion.section key="live" {...slide}>
+              <h2 id="wiz-title">Position open</h2>
+              <div className={`wiz-live ${direction === 'buy' ? 'is-long' : 'is-short'}`}>
+                <span className="wiz-live-badge"><span className="live-dot" /> LIVE</span>
+                <div className="wiz-live-inst">{instrument}</div>
+                <div className="wiz-live-meta">
+                  <span className={`badge ${direction === 'buy' ? 'badge-up' : 'badge-down'}`}>{direction === 'buy' ? 'Long' : 'Short'}</span>
+                  <span className="mono">{numericRisk}% risk</span>
+                </div>
+                <div className="wiz-live-timer mono" aria-label="Time in trade"><Timer size={16} /> {elapsed(entryTime || now, now)}</div>
+              </div>
+              <p className="wiz-lead">Stick to your stop and target. Close it here when the trade is done to run the debrief.</p>
+              <div className="wiz-actions">
+                <button className="btn btn-ghost" onClick={() => setConfirmLeave(true)}>I didn’t take it</button>
+                <button className="btn btn-primary wiz-primary" onClick={() => setPhase('DEBRIEF')}>
+                  <Flag size={16} /> Close position
+                </button>
+              </div>
+            </motion.section>
+          )}
+
+          {phase === 'DEBRIEF' && (
+            <motion.section key="debrief" {...slide}>
+              <h2 id="wiz-title">Post-trade debrief</h2>
+              <p className="wiz-lead">Be honest — the firewall is only as good as what you tell it.</p>
+
+              <label className="field">
+                <span className="field-label">Result (P/L)</span>
+                <div className="wiz-suffix wiz-pnl">
+                  <span>$</span>
+                  <input
+                    className={`input ${Number(pnl) > 0 ? 'is-win' : Number(pnl) < 0 ? 'is-loss' : ''}`}
+                    type="number"
+                    step="0.01"
+                    placeholder="-120 or 250"
+                    value={pnl}
+                    onChange={(e) => setPnl(e.target.value)}
+                    aria-label="Profit or loss"
+                    autoFocus
+                  />
+                </div>
+              </label>
+
+              <div className="field">
+                <span className="field-label">How did you feel?</span>
+                <div className="mood-chips" role="radiogroup" aria-label="Primary emotion">
+                  {MOODS.map((m) => (
+                    <button
+                      key={m.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={mood === m.value}
+                      className={`mood-chip ${mood === m.value ? 'is-on' : ''} ${['Anxious', 'Greedy', 'Angry'].includes(m.value) ? 'is-hot' : ''}`}
+                      onClick={() => setMood(m.value)}
+                    >
+                      <span aria-hidden="true">{m.emoji}</span> {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <label className="toggle-row">
+                <span>
+                  <span className="toggle-title">I followed my plan</span>
+                  <span className="toggle-desc">Entry, stop and exit all went as planned.</span>
+                </span>
+                <span className={`toggle ${followedPlan ? 'is-on' : ''}`}>
+                  <input type="checkbox" role="switch" checked={followedPlan} onChange={(e) => setFollowedPlan(e.target.checked)} aria-label="I followed my plan" />
+                  <span className="toggle-knob" />
+                </span>
+              </label>
+
+              <label className="field">
+                <span className="field-label">Reflection</span>
+                <textarea className="input" rows={3} maxLength={500} placeholder="Why did you exit? Did you panic, or hit your target?" value={notes} onChange={(e) => setNotes(e.target.value)} />
+              </label>
+
+              <div className="wiz-actions">
+                <button className="btn btn-primary wiz-primary" onClick={logTrade} disabled={busy}>
+                  <CircleCheck size={16} /> {busy ? 'Logging…' : 'Log trade'}
+                </button>
+              </div>
+            </motion.section>
+          )}
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
+}
+
+function StatusPill({ icon: Icon, label, value, tone }) {
+  return (
+    <div className={`wiz-pill is-${tone}`}>
+      <Icon size={14} />
+      <span className="wiz-pill-label">{label}</span>
+      <span className="mono wiz-pill-value">{value}</span>
+    </div>
+  );
+}

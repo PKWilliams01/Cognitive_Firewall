@@ -200,3 +200,95 @@ describe('legacy /api/metrics route', () => {
     expect(res.body.hasTrades).toBe(false);
   });
 });
+
+describe('hard rules', () => {
+  test('a [HARD] rule must be confirmed even with strict mode off', async () => {
+    const u = await signUp();
+    await request(app).patch('/api/users/me').set(auth(u.token)).send({ strictConfluence: false });
+    const res = await request(app).post('/api/trades/preflight').set(auth(u.token))
+      .send({ riskPercentage: 1, confluencesChecked: 2, confluencesTotal: 3, hardChecked: 0, hardTotal: 1 });
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe('hard_rules');
+    const ok = await request(app).post('/api/trades/preflight').set(auth(u.token))
+      .send({ riskPercentage: 1, confluencesChecked: 2, confluencesTotal: 3, hardChecked: 1, hardTotal: 1 });
+    expect(ok.status).toBe(200);
+  });
+});
+
+describe('mood check-ins (journal)', () => {
+  test('server snapshots the current firewall state into each check-in', async () => {
+    const u = await signUp();
+    await request(app).patch('/api/users/me').set(auth(u.token)).send({ plannedDailyLimit: 10 });
+    await lockOut(u.id);
+    const res = await request(app).post('/api/journal').set(auth(u.token))
+      .send({ emotionalState: 'FRUSTRATED', confidenceLevel: 3, notes: 'Chased two losses.', disciplineScoreAtEntry: 100, revengeRiskAtEntry: 0 });
+    expect(res.status).toBe(201);
+    expect(res.body.revengeRiskAtEntry).toBe(100); // client-supplied 0 ignored
+    expect(res.body.disciplineScoreAtEntry).toBe(33);
+  });
+
+  test('check-ins are private, newest first, and deletable only by their owner', async () => {
+    const a = await signUp();
+    const b = await signUp();
+    const first = await request(app).post('/api/journal').set(auth(a.token)).send({ emotionalState: 'CALM', confidenceLevel: 7 });
+    await new Promise((r) => setTimeout(r, 5));
+    await request(app).post('/api/journal').set(auth(a.token)).send({ emotionalState: 'FOCUSED', confidenceLevel: 8 });
+
+    const list = await request(app).get(`/api/journal/user/${a.id}`).set(auth(a.token));
+    expect(list.body.map((e) => e.emotionalState)).toEqual(['FOCUSED', 'CALM']);
+    expect((await request(app).get(`/api/journal/user/${a.id}`).set(auth(b.token))).body).toHaveLength(0);
+
+    expect((await request(app).delete(`/api/journal/${first.body._id}`).set(auth(b.token))).status).toBe(404);
+    expect((await request(app).delete(`/api/journal/${first.body._id}`).set(auth(a.token))).status).toBe(200);
+  });
+
+  test('invalid emotional states are rejected', async () => {
+    const u = await signUp();
+    const res = await request(app).post('/api/journal').set(auth(u.token)).send({ emotionalState: 'EUPHORIC', confidenceLevel: 5 });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('no loosening the rules mid-tilt', () => {
+  async function lockedUser() {
+    const u = await signUp();
+    await request(app).patch('/api/users/me').set(auth(u.token)).send({ plannedDailyLimit: 10, timezone: 'Europe/London', tradingPlanRules: ['[HARD] Stop set before entry', 'Higher-timeframe bias'] });
+    await lockOut(u.id);
+    return u;
+  }
+
+  test.each([
+    [{ lockThreshold: 100 }, 'lock threshold'],
+    [{ plannedDailyLimit: 20 }, 'daily limit'],
+    [{ maxRiskPercent: 10 }, 'risk cap'],
+    [{ cooldownMinutes: 15 }, 'cool-off'],
+    [{ strictConfluence: false }, 'strict mode'],
+    [{ timezone: 'Asia/Tokyo' }, 'timezone'],
+    [{ tradingPlanRules: ['Higher-timeframe bias'] }, 'trading rules'],
+  ])('refuses %j while locked', async (body, label) => {
+    const u = await lockedUser();
+    const res = await request(app).patch('/api/users/me').set(auth(u.token)).send(body);
+    expect(res.status).toBe(423);
+    expect(res.body.message).toMatch(label);
+  });
+
+  test('tightening is still allowed while locked', async () => {
+    const u = await lockedUser();
+    const res = await request(app).patch('/api/users/me').set(auth(u.token)).send({
+      lockThreshold: 60, plannedDailyLimit: 5, maxRiskPercent: 1,
+      tradingPlanRules: ['[HARD] Stop set before entry', 'Higher-timeframe bias', 'No trading 15 min after a loss'],
+    });
+    expect(res.status).toBe(200);
+  });
+
+  test('the legacy PUT route is guarded too', async () => {
+    const u = await lockedUser();
+    const res = await request(app).put(`/api/users/${u.id}`).set(auth(u.token)).send({ plannedDailyLimit: 50 });
+    expect(res.status).toBe(423);
+  });
+
+  test('loosening is fine when not locked', async () => {
+    const u = await signUp();
+    expect((await request(app).patch('/api/users/me').set(auth(u.token)).send({ lockThreshold: 95 })).status).toBe(200);
+  });
+});

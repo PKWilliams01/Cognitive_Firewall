@@ -6,6 +6,7 @@ const JournalEntry = require('../Models/JournalEntry');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { protect } = require('../Middleware/authMiddleware');
+const { firewallState } = require('./tradeRoutes');
 const { OAuth2Client } = require('google-auth-library');
 
 // A secret key for signing tokens (In a real app, this goes in a .env file)
@@ -227,6 +228,43 @@ router.post('/google', async (req, res) => {
 });
 
 
+// While the firewall is locked, a tilted trader must not be able to escape by
+// loosening their own rules (raising limits, shortening the cool-off, switching
+// off strict mode, deleting rules, or moving the trading day). Tightening is fine.
+function loosenedFields(current, update) {
+  const loosened = [];
+  const num = (v) => Number(v);
+  if (update.plannedDailyLimit !== undefined && num(update.plannedDailyLimit) > num(current.plannedDailyLimit)) loosened.push('daily limit');
+  if (update.lockThreshold !== undefined && num(update.lockThreshold) > num(current.lockThreshold)) loosened.push('lock threshold');
+  if (update.maxRiskPercent !== undefined && num(update.maxRiskPercent) > num(current.maxRiskPercent)) loosened.push('risk cap');
+  if (update.cooldownMinutes !== undefined) {
+    const before = num(current.cooldownMinutes);
+    const after = num(update.cooldownMinutes);
+    // 0 means "rest of the day" — the longest possible cool-off.
+    if ((before === 0 && after !== 0) || (before !== 0 && after !== 0 && after < before)) loosened.push('cool-off');
+  }
+  if (update.strictConfluence === false && current.strictConfluence !== false) loosened.push('strict mode');
+  if (update.timezone !== undefined && update.timezone !== current.timezone) loosened.push('timezone');
+  if (update.tradingPlanRules !== undefined) {
+    const next = new Set(update.tradingPlanRules);
+    if ((current.tradingPlanRules || []).some((r) => !next.has(r))) loosened.push('trading rules');
+  }
+  return loosened;
+}
+
+async function rejectIfLoosenedWhileLocked(user, update, res) {
+  const loosened = loosenedFields(user, update);
+  if (!loosened.length) return false;
+  const state = await firewallState(user);
+  if (!state.isLocked) return false;
+  res.status(423).json({
+    code: 'locked_settings',
+    fields: loosened,
+    message: `The firewall is locked, so you can't loosen your ${loosened.join(', ')} right now. Tightening is still allowed.`,
+  });
+  return true;
+}
+
 // 2c. CURRENT USER — profile & settings
 router.get('/me', protect, async (req, res) => {
   // req.user is loaded without the password hash, so re-read the record to
@@ -239,6 +277,7 @@ router.patch('/me', protect, async (req, res) => {
   const { update, error } = buildSettingsUpdate(req.body);
   if (error) return res.status(422).json({ message: error });
   try {
+    if (await rejectIfLoosenedWhileLocked(req.user, update, res)) return;
     const user = await User.findByIdAndUpdate(req.user._id, update, { new: true, runValidators: true });
     res.json(publicProfile(user));
   } catch (err) {
@@ -319,6 +358,8 @@ router.put('/:id', protect, async (req, res) => {
     const allowed = {};
     if (req.body.plannedDailyLimit !== undefined) allowed.plannedDailyLimit = req.body.plannedDailyLimit;
     if (req.body.tradingPlanRules !== undefined) allowed.tradingPlanRules = req.body.tradingPlanRules;
+
+    if (await rejectIfLoosenedWhileLocked(req.user, allowed, res)) return;
 
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,

@@ -43,6 +43,8 @@ const authLimiter = rateLimit({
   max: 50,                  // 50 requests per window per IP
   standardHeaders: true,
   legacyHeaders: false,
+  // The test suite registers many users; production is always limited.
+  skip: () => process.env.NODE_ENV === 'test',
   message: { message: "Too many attempts, please try again later." }
 });
 

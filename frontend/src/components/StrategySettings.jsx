@@ -1,257 +1,231 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Lock, LockOpen, AlertTriangle, Settings2, Hash, Activity } from 'lucide-react';
-import PageWrapper from './PageWrapper';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Plus, Trash2, Lock, LockOpen, ShieldAlert, ListChecks, Minus, Sparkles } from 'lucide-react';
 import api, { errorMessage } from '../api/client';
 import { useToast } from './Toast';
+import { parseRules, serializeRule } from '../utils/rules';
+import './StrategySettings.css';
 
-export default function StrategySettings({ user, onUpdate }) {
+const TEMPLATES = [
+  { label: 'Stop loss set before entry', hard: true },
+  { label: 'Risk at or below my per-trade cap', hard: true },
+  { label: 'No new trade within 15 minutes of a loss', hard: true },
+  { label: 'Clear higher-timeframe bias', hard: false },
+  { label: 'Inside my planned session (London / New York)', hard: false },
+  { label: 'Minimum 2R reward-to-risk', hard: false },
+];
+
+export default function StrategySettings({ user, onUpdate, firewallLocked = false }) {
   const toast = useToast();
-  const [isLocked, setIsLocked] = useState(true);
-  const [rules, setRules] = useState([]);
-  const [dailyLimit, setDailyLimit] = useState(3);
-  const [loading, setLoading] = useState(false);
-  
-  // Terminal State
-  const [ruleName, setRuleName] = useState('');
-  const [ruleValue, setRuleValue] = useState('');
-  const [ruleCategory, setRuleCategory] = useState('soft'); 
+  const [editing, setEditing] = useState(false);
+  const [rules, setRules] = useState(() => parseRules(user?.tradingPlanRules || []));
+  const [dailyLimit, setDailyLimit] = useState(user?.plannedDailyLimit || 3);
+  const [draft, setDraft] = useState('');
+  const [draftHard, setDraftHard] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // 1. INITIALIZE DATA FROM USER PROFILE
+  // Re-sync when the saved plan changes elsewhere (e.g. Settings).
   useEffect(() => {
-    if (user) {
-      setDailyLimit(user.plannedDailyLimit || 3);
+    if (editing) return;
+    setRules(parseRules(user?.tradingPlanRules || []));
+    setDailyLimit(user?.plannedDailyLimit || 3);
+  }, [user?.tradingPlanRules, user?.plannedDailyLimit, editing]);
 
-      if (user.tradingPlanRules) {
-        const parsed = user.tradingPlanRules.map((r, i) => {
-          const isHard = r.startsWith('[HARD]');
-          const cleanLabel = r.replace('[HARD] ', '');
-          return { 
-            id: i + Date.now(), 
-            label: cleanLabel, 
-            fullString: r,
-            category: isHard ? 'hard' : 'soft' 
-          };
-        });
-        setRules(parsed);
-      }
-    }
-  }, [user]);
+  const hard = useMemo(() => rules.filter((r) => r.hard), [rules]);
+  const soft = useMemo(() => rules.filter((r) => !r.hard), [rules]);
+  const existing = useMemo(() => new Set(rules.map((r) => r.label.toLowerCase())), [rules]);
 
-  // 2. ADD RULE LOGIC
-  const handleAddRule = () => {
-    if (!ruleName || !ruleValue) return;
-    const displayLabel = `${ruleName}: ${ruleValue}`;
-    const backendString = ruleCategory === 'hard' ? `[HARD] ${displayLabel}` : displayLabel;
-
-    setRules(prev => [...prev, { 
-      id: Date.now(), 
-      label: displayLabel, 
-      fullString: backendString, 
-      category: ruleCategory 
-    }]);
-    
-    setRuleName('');
-    setRuleValue('');
+  const addRule = (label, isHard) => {
+    const clean = label.trim();
+    if (!clean) return;
+    if (existing.has(clean.toLowerCase())) return toast.info('That rule is already in your plan.');
+    if (rules.length >= 30) return toast.error('Plans are limited to 30 rules.');
+    const raw = serializeRule(clean, isHard);
+    setRules((list) => [...list, { id: `new-${Date.now()}-${clean}`, raw, hard: isHard, label: clean }]);
   };
 
-  const handleRemoveRule = (id) => {
-    if (isLocked) return;
-    setRules(prev => prev.filter(r => r.id !== id));
+  const submitDraft = (e) => {
+    e.preventDefault();
+    addRule(draft, draftHard);
+    setDraft('');
   };
 
-  // 3. SAVE LOGIC
-  const handleSave = async () => {
-    setLoading(true);
+  const cancel = () => {
+    setRules(parseRules(user?.tradingPlanRules || []));
+    setDailyLimit(user?.plannedDailyLimit || 3);
+    setEditing(false);
+  };
+
+  const seal = async () => {
+    setSaving(true);
     try {
-      const ruleStrings = rules.map(r => r.fullString);
       const res = await api.patch('/api/users/me', {
-        tradingPlanRules: ruleStrings,
-        plannedDailyLimit: parseInt(dailyLimit, 10)
+        tradingPlanRules: rules.map((r) => r.raw),
+        plannedDailyLimit: Number(dailyLimit),
       });
-
-      // App merges the profile and keeps the session token.
-      onUpdate(res.data);
-      setIsLocked(true);
-      toast.success('Strategy sealed. The firewall is enforcing your new rules.');
+      onUpdate?.(res.data);
+      setEditing(false);
+      toast.success('Plan sealed. The firewall is enforcing your new rules.');
     } catch (err) {
-      toast.error(errorMessage(err, 'Could not save your strategy.'));
+      const message = errorMessage(err, 'Could not save your strategy.');
+      if (err?.response?.status === 423) toast.lock(message);
+      else toast.error(message);
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
   return (
-    <PageWrapper>
-      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '20px 0' }}>
-      
-        {/* --- INDUSTRIAL STATUS BANNER --- */}
-        <div className="card" style={{ 
-          backgroundColor: isLocked ? 'var(--text-main)' : 'var(--surface)',
-          color: isLocked ? 'var(--surface)' : 'var(--text-main)',
-          border: isLocked ? 'none' : '2px solid var(--border)',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px'
-        }}>
-          <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-            <div style={{ padding: '15px', borderRadius: '12px', backgroundColor: isLocked ? 'rgba(255,255,255,0.1)' : 'var(--background)' }}>
-              {isLocked ? <Lock size={24} color="var(--primary)" /> : <LockOpen size={24} color="var(--warning)" />}
-            </div>
-            <div>
-              <div style={{ fontSize: '12px', fontWeight: '800', letterSpacing: '2px', opacity: 0.7 }}>STRATEGY STATUS</div>
-              <div style={{ fontSize: '20px', fontWeight: '900' }}>{isLocked ? 'ACTIVE & ENFORCED' : 'CONFIGURATION MODE'}</div>
-            </div>
-          </div>
-          <button 
-            onClick={isLocked ? () => setIsLocked(false) : handleSave}
-            className="btn"
-            style={{ 
-              backgroundColor: isLocked ? 'var(--primary)' : 'var(--text-main)', 
-              color: 'white', 
-              padding: '14px 28px', 
-              fontSize: '13px', 
-              letterSpacing: '1px' 
-            }}
-          >
-            {loading ? 'SYNCING...' : isLocked ? 'UNLOCK PARAMETERS' : 'SEAL & DEPLOY'}
+    <div className="strat">
+      <section className={`card strat-banner ${editing ? 'is-editing' : ''}`}>
+        <span className="strat-banner-icon">{editing ? <LockOpen size={20} /> : <Lock size={20} />}</span>
+        <div className="strat-banner-text">
+          <span className="card-title">Plan status</span>
+          <h2>{editing ? 'Editing your plan' : 'Sealed & enforced'}</h2>
+          <p>
+            {editing
+              ? 'Changes apply after you seal. Tightening is always allowed; loosening is blocked while the firewall is locked.'
+              : 'Every pre-flight checks these rules. Hard rules can never be skipped.'}
+          </p>
+        </div>
+        <div className="strat-banner-actions">
+          {editing ? (
+            <>
+              <button className="btn btn-ghost" onClick={cancel} disabled={saving}>Cancel</button>
+              <button className="btn btn-primary" onClick={seal} disabled={saving}>
+                <Lock size={15} /> {saving ? 'Sealing…' : 'Seal plan'}
+              </button>
+            </>
+          ) : (
+            <button className="btn btn-outline" onClick={() => setEditing(true)}>
+              <LockOpen size={15} /> Edit plan
+            </button>
+          )}
+        </div>
+      </section>
+
+      {firewallLocked && editing && (
+        <div className="strat-locked" role="note">
+          <ShieldAlert size={16} />
+          <span>The firewall is locked. You can add rules or tighten your limit, but removing rules or raising the limit will be refused until it unlocks.</span>
+        </div>
+      )}
+
+      <section className="card strat-limit">
+        <div>
+          <span className="card-title">Max trades per day</span>
+          <p>Hitting this locks execution for the rest of the day and drives the Impulsivity Index.</p>
+        </div>
+        <div className="strat-stepper" role="group" aria-label="Max trades per day">
+          <button className="shell-icon-btn" onClick={() => setDailyLimit((n) => Math.max(1, n - 1))} disabled={!editing || dailyLimit <= 1} aria-label="Decrease daily limit">
+            <Minus size={16} />
+          </button>
+          <span className="mono strat-limit-value" aria-live="polite">{dailyLimit}</span>
+          <button className="shell-icon-btn" onClick={() => setDailyLimit((n) => Math.min(50, n + 1))} disabled={!editing || dailyLimit >= 50} aria-label="Increase daily limit">
+            <Plus size={16} />
           </button>
         </div>
+      </section>
 
-        {/* --- RISK CONFIGURATION SECTION --- */}
-        <div className="card" style={{ marginBottom: '30px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-            <div style={{ background: 'rgba(255, 86, 48, 0.1)', padding: '12px', borderRadius: '10px' }}>
-              <Activity size={24} color="var(--danger)" />
-            </div>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '900', letterSpacing: '1px', color: 'var(--text-main)' }}>MAXIMUM DAILY TRADES</h3>
-              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-                Hard stop trigger for Impulsivity Index.
-              </p>
-            </div>
-          </div>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-            <button 
-              disabled={isLocked || dailyLimit <= 1} 
-              onClick={() => setDailyLimit(prev => prev - 1)}
-              style={counterBtn(isLocked)}
-            >-</button>
-            <div style={{ width: '40px', textAlign: 'center', fontSize: '28px', fontWeight: '900', color: 'var(--text-main)' }}>
-              {dailyLimit}
-            </div>
-            <button 
-              disabled={isLocked} 
-              onClick={() => setDailyLimit(prev => parseInt(prev) + 1)}
-              style={counterBtn(isLocked)}
-            >+</button>
-          </div>
-        </div>
-
-        {/* --- RULES GRID --- */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px', marginBottom: '30px' }}>
-          
-          {/* SYSTEM CRITICAL (HARD) RULES */}
-          <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <div style={sectionHeader}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <AlertTriangle size={18} color="var(--danger)" />
-                <span style={headerText}>SYSTEM CRITICAL (HARD)</span>
-              </div>
-              <div style={ruleCounter}>{rules.filter(r => r.category === 'hard').length}</div>
-            </div>
-            <div style={ruleScrollArea}>
-              {rules.filter(r => r.category === 'hard').map(rule => (
-                <div key={rule.id} style={hardRuleItem}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <Hash size={14} style={{ opacity: 0.5 }} />
-                    <span style={{ fontWeight: '700' }}>{rule.label}</span>
-                  </div>
-                  {!isLocked && <Trash2 size={16} style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => handleRemoveRule(rule.id)} />}
-                </div>
-              ))}
-              {rules.filter(r => r.category === 'hard').length === 0 && <div style={emptyState}>NO CRITICAL CONSTRAINTS LOADED</div>}
-            </div>
-          </div>
-
-          {/* OPERATIONAL (SOFT) GUIDELINES */}
-          <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <div style={sectionHeader}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Settings2 size={18} color="#0052CC" />
-                <span style={headerText}>OPERATIONAL (SOFT)</span>
-              </div>
-              <div style={ruleCounter}>{rules.filter(r => r.category === 'soft').length}</div>
-            </div>
-            <div style={ruleScrollArea}>
-              {rules.filter(r => r.category === 'soft').map(rule => (
-                <div key={rule.id} style={softRuleItem}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ height: '6px', width: '6px', borderRadius: '50%', background: '#0052CC' }}></div>
-                    <span style={{ fontWeight: '600' }}>{rule.label}</span>
-                  </div>
-                  {!isLocked && <Trash2 size={16} style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => handleRemoveRule(rule.id)} />}
-                </div>
-              ))}
-              {rules.filter(r => r.category === 'soft').length === 0 && <div style={emptyState}>NO GUIDELINES LOADED</div>}
-            </div>
-          </div>
-        </div>
-
-        {/* --- COMMAND INPUT TERMINAL --- */}
-        {!isLocked && (
-          <div className="card" style={{ background: 'var(--background)', border: '2px dashed var(--border)' }}>
-            <div style={{ marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Plus size={20} color="var(--text-main)" />
-              <span style={{ fontWeight: '900', fontSize: '15px', letterSpacing: '1px', color: 'var(--text-main)' }}>RULE BUILDER TERMINAL</span>
-            </div>
-            <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-end' }}>
-              <div style={{ flex: 2 }}>
-                <label style={terminalLabel}>PARAMETER NAME</label>
-                <input style={terminalInput} placeholder="e.g. LIQUIDITY DRAW" value={ruleName} onChange={e => setRuleName(e.target.value)} />
-              </div>
-              <div style={{ flex: 2 }}>
-                <label style={terminalLabel}>EXPECTED CONDITION</label>
-                <input style={terminalInput} placeholder="e.g. DAILY HIGH SWEPT" value={ruleValue} onChange={e => setRuleValue(e.target.value)} />
-              </div>
-              <div style={{ flex: 1.2 }}>
-                <label style={terminalLabel}>ENFORCEMENT LEVEL</label>
-                <div style={modeToggle}>
-                  <button onClick={() => setRuleCategory('soft')} style={ruleCategory === 'soft' ? activeMode('#0052CC') : inactiveMode}>SOFT</button>
-                  <button onClick={() => setRuleCategory('hard')} style={ruleCategory === 'hard' ? activeMode('var(--danger)') : inactiveMode}>HARD</button>
-                </div>
-              </div>
-              <button className="btn" style={terminalAddBtn} onClick={handleAddRule}>INITIALIZE RULE</button>
-            </div>
-          </div>
-        )}
+      <div className="strat-columns">
+        <RuleColumn
+          title="System-critical (hard)"
+          desc="Must be confirmed on every trade."
+          tone="hard"
+          rules={hard}
+          editing={editing}
+          onRemove={(id) => setRules((list) => list.filter((r) => r.id !== id))}
+        />
+        <RuleColumn
+          title="Operational (soft)"
+          desc="Required in strict mode, otherwise advisory."
+          tone="soft"
+          rules={soft}
+          editing={editing}
+          onRemove={(id) => setRules((list) => list.filter((r) => r.id !== id))}
+        />
       </div>
-    </PageWrapper>
+
+      <AnimatePresence>
+        {editing && (
+          <motion.section
+            className="card strat-builder"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+          >
+            <span className="card-title"><ListChecks size={14} /> Add a rule</span>
+            <form className="strat-add" onSubmit={submitDraft}>
+              <input
+                className="input"
+                placeholder="e.g. Liquidity sweep of the daily high"
+                maxLength={160}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                aria-label="New rule"
+              />
+              <div className="seg strat-kind" role="radiogroup" aria-label="Enforcement level">
+                <button type="button" role="radio" aria-checked={!draftHard} className={`seg-btn is-long ${!draftHard ? 'is-on' : ''}`} onClick={() => setDraftHard(false)}>Soft</button>
+                <button type="button" role="radio" aria-checked={draftHard} className={`seg-btn is-short ${draftHard ? 'is-on' : ''}`} onClick={() => setDraftHard(true)}>Hard</button>
+              </div>
+              <button className="btn btn-primary" type="submit" disabled={!draft.trim()}>
+                <Plus size={15} /> Add
+              </button>
+            </form>
+
+            <div className="strat-templates">
+              <span className="field-hint"><Sparkles size={12} /> Common rules</span>
+              <div>
+                {TEMPLATES.filter((t) => !existing.has(t.label.toLowerCase())).map((t) => (
+                  <button key={t.label} type="button" className={`chip ${t.hard ? 'strat-chip-hard' : ''}`} onClick={() => addRule(t.label, t.hard)}>
+                    <Plus size={12} /> {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </motion.section>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
-// --- DYNAMIC INLINE STYLES (Using CSS Variables) ---
-const counterBtn = (isLocked) => ({
-  width: '45px', height: '45px', borderRadius: '8px', 
-  border: `1px solid var(--border)`, 
-  background: 'var(--background)', 
-  cursor: isLocked ? 'not-allowed' : 'pointer', 
-  fontSize: '20px', fontWeight: '700', 
-  color: 'var(--text-main)',
-  opacity: isLocked ? 0.5 : 1
-});
-
-const sectionHeader = { padding: '20px 25px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--background)' };
-const headerText = { fontWeight: '900', fontSize: '13px', letterSpacing: '1px', color: 'var(--text-main)' };
-const ruleCounter = { background: 'var(--text-main)', color: 'white', padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '900' };
-const ruleScrollArea = { padding: '20px', minHeight: '220px', flexGrow: 1 };
-
-const hardRuleItem = { display: 'flex', justifyContent: 'space-between', padding: '15px', background: 'rgba(255, 86, 48, 0.05)', border: '1px solid rgba(255, 86, 48, 0.2)', borderRadius: '8px', marginBottom: '10px', fontSize: '13px', color: 'var(--danger)' };
-const softRuleItem = { display: 'flex', justifyContent: 'space-between', padding: '15px', background: 'rgba(0, 82, 204, 0.05)', border: '1px solid rgba(0, 82, 204, 0.2)', borderRadius: '8px', marginBottom: '10px', fontSize: '13px', color: '#0052CC' };
-
-const emptyState = { textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px', fontWeight: '600', marginTop: '80px', letterSpacing: '1px' };
-
-const terminalLabel = { display: 'block', fontSize: '11px', fontWeight: '900', color: 'var(--text-muted)', marginBottom: '10px', letterSpacing: '1px' };
-const terminalInput = { width: '100%', padding: '14px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', fontWeight: '600', outline: 'none', backgroundColor: 'var(--surface)', color: 'var(--text-main)' };
-const modeToggle = { display: 'flex', background: 'var(--background)', borderRadius: '8px', padding: '4px', border: '1px solid var(--border)' };
-const activeMode = (color) => ({ flex: 1, border: 'none', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '900', backgroundColor: color, color: '#FFF' });
-const inactiveMode = { flex: 1, border: 'none', padding: '10px', background: 'transparent', cursor: 'pointer', fontSize: '12px', fontWeight: '800', color: 'var(--text-muted)' };
-const terminalAddBtn = { backgroundColor: 'var(--text-main)', color: 'white', padding: '14px 25px', borderRadius: '8px', fontWeight: '900', fontSize: '13px', letterSpacing: '1px' };
+function RuleColumn({ title, desc, tone, rules, editing, onRemove }) {
+  return (
+    <section className={`card strat-col strat-col-${tone}`} aria-label={title}>
+      <header className="strat-col-head">
+        <div>
+          <h3>{title}</h3>
+          <p>{desc}</p>
+        </div>
+        <span className="badge badge-neutral">{rules.length}</span>
+      </header>
+      {rules.length === 0 ? (
+        <div className="strat-col-empty">{editing ? 'Add one below.' : 'None yet.'}</div>
+      ) : (
+        <ul>
+          <AnimatePresence initial={false}>
+            {rules.map((r) => (
+              <motion.li
+                key={r.id}
+                layout
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 8 }}
+                className="strat-rule"
+              >
+                <span className="strat-rule-dot" aria-hidden="true" />
+                <span className="strat-rule-label">{r.label}</span>
+                {editing && (
+                  <button className="shell-icon-btn" onClick={() => onRemove(r.id)} aria-label={`Remove rule: ${r.label}`}>
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </motion.li>
+            ))}
+          </AnimatePresence>
+        </ul>
+      )}
+    </section>
+  );
+}
