@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import API_BASE from './config';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence } from 'framer-motion';
+import api, { AUTH_EXPIRED_EVENT, getStoredUser } from './api/client';
 import Welcome from './pages/Welcome';
 import LoginScreen from './components/LoginScreen';
 import AppShell from './components/AppShell';
@@ -11,9 +10,24 @@ import { LOCK_THRESHOLD } from './components/RiskMeter';
 import TradeExecutionWizard from './components/TradeExecutionWizard';
 import StrategySettings from './components/StrategySettings';
 import { ReflectiveJournal } from './components/ReflectiveJournal';
+import Settings from './components/Settings';
 import Guidebook from './components/Guidebook';
+import { ToastProvider, useToast } from './components/Toast';
+
+const browserTimeZone = () => {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return null; }
+};
 
 function App() {
+  return (
+    <ToastProvider>
+      <CognitiveFirewall />
+    </ToastProvider>
+  );
+}
+
+function CognitiveFirewall() {
+  const toast = useToast();
   const [user, setUser] = useState(null);
   const [view, setView] = useState('dashboard');
   const [showWizard, setShowWizard] = useState(false);
@@ -23,53 +37,74 @@ function App() {
   const [authStage, setAuthStage] = useState('welcome'); // 'welcome' | 'login'
   const [authMode, setAuthMode] = useState('login'); // which tab the auth screen opens on
 
-  useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser && storedUser !== "undefined") {
-      const parsedUser = JSON.parse(storedUser);
-      setUser(parsedUser);
-      fetchTradeHistory(parsedUser._id);
-    }
-  }, []);
-
-  const fetchTradeHistory = async (userId) => {
-    if (!userId) return;
-
-    // 1. Grab the VIP Badge (JWT) from local storage
-    const storedUser = JSON.parse(localStorage.getItem('user'));
-    const token = storedUser?.token;
-    // 2. Create the Authorization Header
-    const config = {
-      headers: { Authorization: `Bearer ${token}` }
-    };
-
+  const fetchTradeHistory = useCallback(async (userId) => {
     if (!userId) return;
     try {
       const [tradesRes, metricsRes] = await Promise.all([
-        // ADD `, config` to the end of both of these lines!
-        axios.get(`${API_BASE}/api/trades/user/${userId}`, config),
-        axios.get(`${API_BASE}/api/trades/metrics/${userId}`, config)
+        api.get(`/api/trades/user/${userId}`),
+        api.get(`/api/trades/metrics/${userId}`),
       ]);
-      setTradeHistory(tradesRes.data || []); 
+      setTradeHistory(tradesRes.data || []);
       setMetrics(metricsRes.data || {});
-    } catch (err) {
-      console.error("Sync Error:", err);
+    } catch {
+      // 401s are handled by the auth-expired listener; anything else leaves
+      // the last known data on screen.
     }
-  };
+  }, []);
+
+  // Persist profile changes without losing the session token.
+  const updateUser = useCallback((profile) => {
+    setUser((prev) => {
+      const next = { ...prev, ...profile, token: prev?.token };
+      localStorage.setItem('user', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const signOut = useCallback(() => {
+    setUser(null);
+    localStorage.removeItem('user');
+    setTradeHistory([]);
+    setMetrics(null);
+    setView('dashboard');
+    setShowWizard(false);
+    setAuthStage('welcome');
+  }, []);
+
+  useEffect(() => {
+    const stored = getStoredUser();
+    if (stored) {
+      setUser(stored);
+      fetchTradeHistory(stored._id);
+    }
+  }, [fetchTradeHistory]);
+
+  // Expired or revoked token anywhere in the app -> back to sign-in, with a reason.
+  useEffect(() => {
+    const onExpired = () => {
+      signOut();
+      setAuthMode('login');
+      setAuthStage('login');
+      toast.info('Your session has expired. Please sign in again.');
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
+  }, [signOut, toast]);
+
+  // Users start on UTC; adopt the browser's zone once so "today" matches their clock.
+  useEffect(() => {
+    const tz = browserTimeZone();
+    if (!user?._id || !tz || tz === 'UTC' || (user.timezone && user.timezone !== 'UTC')) return;
+    api.patch('/api/users/me', { timezone: tz })
+      .then((res) => { updateUser(res.data); fetchTradeHistory(res.data._id); })
+      .catch(() => {});
+  }, [user?._id, user?.timezone, updateUser, fetchTradeHistory]);
 
   const handleLoginSuccess = (userData) => {
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
     fetchTradeHistory(userData._id);
     if (userData.isNewUser) setShowGuide(true);
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
-    setTradeHistory([]);
-    setMetrics(null);
-    setAuthStage('welcome');
   };
 
   // --- AUTH FLOW: Welcome -> Login ---
@@ -94,7 +129,8 @@ function App() {
     );
   }
 
-  const firewallLocked = (metrics?.revengeRisk || 0) >= LOCK_THRESHOLD;
+  // The server is authoritative; fall back to the score for older payloads.
+  const firewallLocked = metrics?.isLocked ?? (metrics?.revengeRisk || 0) >= LOCK_THRESHOLD;
 
   return (
     <>
@@ -104,7 +140,7 @@ function App() {
         onNavigate={setView}
         onExecute={() => setShowWizard(true)}
         onOpenGuide={() => setShowGuide(true)}
-        onLogout={handleLogout}
+        onLogout={signOut}
         firewallLocked={firewallLocked}
       >
         <AnimatePresence mode="wait">
@@ -112,9 +148,15 @@ function App() {
             {view === 'dashboard' && (
               <Dashboard user={user} metrics={metrics} trades={tradeHistory} onExecute={() => setShowWizard(true)} />
             )}
-            {view === 'strategy' && <StrategySettings user={user} onUpdate={setUser} />}
+            {view === 'strategy' && <StrategySettings user={user} onUpdate={updateUser} />}
             {view === 'journal' && (
               <ReflectiveJournal trades={tradeHistory} userId={user._id} onTradeLogged={() => fetchTradeHistory(user._id)} />
+            )}
+            {view === 'settings' && (
+              <Settings
+                onUserUpdated={(profile) => { updateUser(profile); fetchTradeHistory(user._id); }}
+                onAccountDeleted={signOut}
+              />
             )}
           </PageWrapper>
         </AnimatePresence>
@@ -125,6 +167,7 @@ function App() {
           <TradeExecutionWizard
             userId={user._id}
             user={user}
+            firewall={metrics}
             revengeRisk={metrics?.revengeRisk || 0}
             onClose={() => setShowWizard(false)}
             onTradeSuccess={() => fetchTradeHistory(user._id)}

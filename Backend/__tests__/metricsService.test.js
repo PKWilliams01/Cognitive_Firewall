@@ -15,7 +15,9 @@ const trade = ({ pnl, followedPlan = true, entry, durMins = 10 }) => ({
   exitTime: new Date(entry.getTime() + durMins * 60 * 1000),
 });
 
-const user = (overrides = {}) => ({ plannedDailyLimit: 3, startingBalance: 1000, ...overrides });
+// Use the machine's timezone so "today" matches todayAt() regardless of the hour
+const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const user = (overrides = {}) => ({ plannedDailyLimit: 3, startingBalance: 1000, timezone: LOCAL_TZ, ...overrides });
 
 describe('generateUserMetrics', () => {
   test('returns safe defaults when there are no trades', () => {
