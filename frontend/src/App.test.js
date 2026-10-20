@@ -4,6 +4,13 @@ import App from './App';
 
 jest.mock('axios');
 
+// recharts measures 0x0 in jsdom; render charts into a fixed box.
+jest.mock('recharts', () => {
+  const actual = jest.requireActual('recharts');
+  const React = require('react');
+  return { ...actual, ResponsiveContainer: ({ children }) => React.cloneElement(children, { width: 600, height: 280 }) };
+});
+
 beforeEach(() => {
   axios.get.mockResolvedValue({ data: [] });
   localStorage.clear();
@@ -98,5 +105,22 @@ describe('settings and session handling', () => {
     expect(await screen.findByRole('heading', { name: /welcome back/i })).toBeInTheDocument();
     expect(screen.getByText(/session has expired/i)).toBeInTheDocument();
     expect(localStorage.getItem('user')).toBeNull();
+  });
+});
+
+describe('execute while locked', () => {
+  test('opens the cool-off screen instead of the trade wizard', async () => {
+    localStorage.setItem('user', JSON.stringify({ _id: 'u1', username: 'Gee', token: 't', timezone: 'Europe/London', whyITrade: 'Discipline pays.' }));
+    axios.get.mockImplementation((url) =>
+      Promise.resolve({ data: url.includes('/metrics/') ? { hasTrades: true, revengeRisk: 90, isLocked: true, lockReason: 'revenge', lockThreshold: 80 } : [] })
+    );
+    render(<App />);
+    await screen.findByText(/firewall locked/i);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /execution locked|locked/i })[0]);
+
+    expect(await screen.findByRole('dialog', { name: /step away/i })).toBeInTheDocument();
+    expect(screen.getByText(/discipline pays/i)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /pre-flight check/i })).not.toBeInTheDocument();
   });
 });

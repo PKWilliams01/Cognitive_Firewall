@@ -12,6 +12,7 @@ import StrategySettings from './components/StrategySettings';
 import { ReflectiveJournal } from './components/ReflectiveJournal';
 import Settings from './components/Settings';
 import Guidebook from './components/Guidebook';
+import CooldownScreen from './components/CooldownScreen';
 import { ToastProvider, useToast } from './components/Toast';
 
 const browserTimeZone = () => {
@@ -32,6 +33,8 @@ function CognitiveFirewall() {
   const [view, setView] = useState('dashboard');
   const [showWizard, setShowWizard] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [showCooldown, setShowCooldown] = useState(false);
+  const [journalTab, setJournalTab] = useState('trades');
   const [tradeHistory, setTradeHistory] = useState([]);
   const [metrics, setMetrics] = useState(null);
   const [authStage, setAuthStage] = useState('welcome'); // 'welcome' | 'login'
@@ -68,6 +71,7 @@ function CognitiveFirewall() {
     setMetrics(null);
     setView('dashboard');
     setShowWizard(false);
+    setShowCooldown(false);
     setAuthStage('welcome');
   }, []);
 
@@ -90,6 +94,14 @@ function CognitiveFirewall() {
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
   }, [signOut, toast]);
+
+  // When the server reports the lock has lifted, close the cool-off screen.
+  useEffect(() => {
+    if (showCooldown && metrics && metrics.isLocked === false) {
+      setShowCooldown(false);
+      toast.success('Cool-off complete. The firewall has reopened — trade your plan.');
+    }
+  }, [showCooldown, metrics, toast]);
 
   // Users start on UTC; adopt the browser's zone once so "today" matches their clock.
   useEffect(() => {
@@ -132,13 +144,20 @@ function CognitiveFirewall() {
   // The server is authoritative; fall back to the score for older payloads.
   const firewallLocked = metrics?.isLocked ?? (metrics?.revengeRisk || 0) >= LOCK_THRESHOLD;
 
+  // Execute opens the wizard, or the cool-off screen while the firewall is locked.
+  const openExecute = () => (firewallLocked ? setShowCooldown(true) : setShowWizard(true));
+  const navigate = (next) => {
+    if (next === 'journal') setJournalTab('trades');
+    setView(next);
+  };
+
   return (
     <>
       <AppShell
         user={user}
         view={view}
-        onNavigate={setView}
-        onExecute={() => setShowWizard(true)}
+        onNavigate={navigate}
+        onExecute={openExecute}
         onOpenGuide={() => setShowGuide(true)}
         onLogout={signOut}
         firewallLocked={firewallLocked}
@@ -146,11 +165,17 @@ function CognitiveFirewall() {
         <AnimatePresence mode="wait">
           <PageWrapper key={view}>
             {view === 'dashboard' && (
-              <Dashboard user={user} metrics={metrics} trades={tradeHistory} onExecute={() => setShowWizard(true)} />
+              <Dashboard user={user} metrics={metrics} trades={tradeHistory} onExecute={openExecute} />
             )}
-            {view === 'strategy' && <StrategySettings user={user} onUpdate={updateUser} />}
+            {view === 'strategy' && <StrategySettings user={user} onUpdate={updateUser} firewallLocked={firewallLocked} />}
             {view === 'journal' && (
-              <ReflectiveJournal trades={tradeHistory} userId={user._id} onTradeLogged={() => fetchTradeHistory(user._id)} />
+              <ReflectiveJournal
+                key={journalTab}
+                initialTab={journalTab}
+                trades={tradeHistory}
+                userId={user._id}
+                onTradeLogged={() => fetchTradeHistory(user._id)}
+              />
             )}
             {view === 'settings' && (
               <Settings
@@ -165,15 +190,34 @@ function CognitiveFirewall() {
       {showWizard && (
         <div className="wizard-overlay">
           <TradeExecutionWizard
-            userId={user._id}
             user={user}
             firewall={metrics}
-            revengeRisk={metrics?.revengeRisk || 0}
             onClose={() => setShowWizard(false)}
             onTradeSuccess={() => fetchTradeHistory(user._id)}
+            onLocked={() => {
+              setShowWizard(false);
+              fetchTradeHistory(user._id);
+              setShowCooldown(true);
+            }}
           />
         </div>
       )}
+
+      <AnimatePresence>
+        {showCooldown && (
+          <CooldownScreen
+            firewall={metrics}
+            user={user}
+            onClose={() => setShowCooldown(false)}
+            onUnlock={() => fetchTradeHistory(user._id)}
+            onCheckIn={() => {
+              setShowCooldown(false);
+              setJournalTab('checkins');
+              setView('journal');
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showGuide && <Guidebook onClose={() => setShowGuide(false)} />}

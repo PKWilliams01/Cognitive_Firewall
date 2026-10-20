@@ -41,6 +41,7 @@ const JournalEntrySchema = new mongoose.Schema({
 
     notes: {
         type: String,
+        maxlength: 1000,
     },
 
     // Fixed 'Timestamp' to lowercase 'timestamp' (standard JS convention)

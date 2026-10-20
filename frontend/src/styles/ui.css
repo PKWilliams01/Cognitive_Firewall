@@ -225,3 +225,57 @@ textarea.input { resize: vertical; line-height: 1.55; }
   background: var(--text-main);
   border: 3px solid var(--bg);
 }
+
+/* ---------- Emotion chips (wizard debrief, journal check-ins) ---------- */
+.mood-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.mood-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text-muted);
+  font: 500 13px var(--font-body);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease-out), background var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+.mood-chip:hover { border-color: var(--border-strong); color: var(--text-main); }
+.mood-chip.is-on { color: var(--text-main); border-color: rgba(0, 229, 160, 0.45); background: var(--primary-soft); }
+.mood-chip.is-hot.is-on { border-color: rgba(255, 77, 109, 0.5); background: var(--danger-soft); }
+
+
+/* ---------- Segmented control ---------- */
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border-radius: var(--radius-sm); background: var(--bg-elev); border: 1px solid var(--border); }
+.seg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  font: 600 13px var(--font-body);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+.seg-btn.is-long.is-on { color: var(--primary); background: var(--primary-soft); border-color: rgba(0, 229, 160, 0.3); }
+.seg-btn.is-short.is-on { color: var(--danger); background: var(--danger-soft); border-color: rgba(255, 77, 109, 0.35); }
+
+
+/* ---------- Filter / suggestion chips ---------- */
+.chip {
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font: 500 13px var(--font-body);
+  cursor: pointer;
+}
+.chip:hover { color: var(--text-main); border-color: var(--border-strong); }
+.chip.is-on { color: var(--text-main); background: var(--surface-3); border-color: var(--border-strong); }
+

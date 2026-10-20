@@ -44,6 +44,16 @@ router.post("/preflight", protect, async (req, res) => {
             });
         }
 
+        // [HARD] rules must always be confirmed, whatever the strict setting.
+        const hardChecked = Number(req.body.hardChecked) || 0;
+        const hardTotal = Number(req.body.hardTotal) || 0;
+        if (hardTotal > 0 && hardChecked < hardTotal) {
+            return res.status(422).json({
+                code: 'hard_rules',
+                message: `${hardTotal - hardChecked} system-critical rule${hardTotal - hardChecked === 1 ? '' : 's'} not confirmed. Hard rules can't be skipped.`,
+            });
+        }
+
         const checked = Number(req.body.confluencesChecked) || 0;
         const total = Number(req.body.confluencesTotal) || 0;
         if (req.user.strictConfluence && total > 0 && checked < total) {
