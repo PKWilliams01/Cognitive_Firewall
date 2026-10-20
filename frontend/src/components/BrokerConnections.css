@@ -1,0 +1,50 @@
+.brokers { display: flex; flex-direction: column; gap: 14px; }
+
+.brokers-banner {
+  display: flex; gap: 10px; align-items: center;
+  padding: 10px 14px; border-radius: 10px;
+  background: var(--warning-soft, rgba(255, 184, 0, 0.1));
+  border: 1px solid rgba(255, 184, 0, 0.3);
+  color: var(--text-main); font-size: 13px;
+}
+.brokers-banner svg { color: var(--warning); flex-shrink: 0; }
+
+.brokers-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.brokers-item {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 16px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.brokers-item-head { display: flex; align-items: center; gap: 12px; }
+.brokers-item-title { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.brokers-item-title span { font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brokers-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 8px var(--success); flex-shrink: 0; }
+.brokers-dot.is-error { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+
+.brokers-error { margin: 0; font-size: 12px; color: var(--danger); }
+.brokers-lock { margin: 0; display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--warning); }
+.brokers-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.brokers-add { align-self: flex-start; }
+
+.brokers-form {
+  overflow: hidden; display: flex; flex-direction: column; gap: 14px;
+  padding: 16px; border-radius: 12px; border: 1px dashed var(--border);
+}
+.brokers-form-head { display: flex; justify-content: space-between; align-items: center; }
+.brokers-form .settings-hint { margin: 0; }
+
+.brokers-csv {
+  display: flex; flex-direction: column; gap: 12px;
+  padding-top: 16px; border-top: 1px solid var(--border);
+}
+.brokers-csv > div:first-child { display: flex; flex-direction: column; gap: 3px; }
+.brokers-csv-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.brokers-offset { width: 160px; }
+
+@media (max-width: 640px) {
+  .brokers-item-title span { white-space: normal; }
+}
+
+/* The shared segmented control is 2-up; brokers need 3, and a neutral "on" state. */
+.brokers-form .seg { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); grid-template-columns: none; }
+.brokers-form .seg-btn.is-on { color: var(--text-main); background: var(--surface-3); border-color: var(--border-strong); }

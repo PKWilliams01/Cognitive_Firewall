@@ -3,10 +3,11 @@ const router = express.Router();
 const User = require('../Models/User');
 const Trade = require('../Models/Trade');
 const JournalEntry = require('../Models/JournalEntry');
+const BrokerConnection = require('../Models/BrokerConnection');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { protect } = require('../Middleware/authMiddleware');
-const { firewallState } = require('./tradeRoutes');
+const { firewallState } = require("../Services/firewall");
 const { OAuth2Client } = require('google-auth-library');
 
 // A secret key for signing tokens (In a real app, this goes in a .env file)
@@ -308,13 +309,15 @@ router.post('/me/password', protect, async (req, res) => {
 // Data export (right of access): everything stored about the user.
 router.get('/me/export', protect, async (req, res) => {
   try {
-    const [trades, journal] = await Promise.all([
+    const [trades, journal, brokerConnections] = await Promise.all([
       Trade.find({ userId: req.user._id }).sort({ entryTime: 1 }).lean(),
       JournalEntry.find({ userId: req.user._id }).sort({ timestamp: 1 }).lean(),
+      // Credentials are never exported, even encrypted.
+      BrokerConnection.find({ userId: req.user._id }).select('-credentials').lean(),
     ]);
     const stamp = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Disposition', `attachment; filename="cognitive-firewall-export-${stamp}.json"`);
-    res.json({ exportedAt: new Date().toISOString(), profile: publicProfile(req.user), trades, journal });
+    res.json({ exportedAt: new Date().toISOString(), profile: publicProfile(req.user), trades, journal, brokerConnections });
   } catch (err) {
     res.status(500).json({ message: 'Export failed' });
   }
@@ -336,6 +339,7 @@ router.delete('/me', protect, async (req, res) => {
     await Promise.all([
       Trade.deleteMany({ userId: user._id }),
       JournalEntry.deleteMany({ userId: user._id }),
+      BrokerConnection.deleteMany({ userId: user._id }),
     ]);
     await User.deleteOne({ _id: user._id });
     res.json({ message: 'Account deleted' });

@@ -26,6 +26,10 @@ services:
         sync: false
       - key: CLIENT_URL
         sync: false
+      # Encrypts broker API credentials at rest (AES-256-GCM). Generated once
+      # and kept stable - changing it makes existing connections unreadable.
+      - key: BROKER_ENCRYPTION_KEY
+        generateValue: true
       # Optional: enables "Continue with Google" (see DEPLOYMENT.md step 5)
       - key: GOOGLE_CLIENT_ID
         sync: false

@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const journalEntry = require("../Models/JournalEntry");
 const { protect } = require("../Middleware/authMiddleware");
-const { firewallState } = require("./tradeRoutes");
+const { firewallState } = require("../Services/firewall");
 
 // Create a mood check-in. The server snapshots the user's current firewall
 // state so each entry records how disciplined/tilted they were at the time.

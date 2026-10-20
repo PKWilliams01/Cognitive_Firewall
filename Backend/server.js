@@ -11,6 +11,7 @@ const tradeRoutes = require("./Routes/tradeRoutes");
 const journalRoutes = require("./Routes/journalRoutes");
 const userRoutes = require("./Routes/userRoutes");
 const marketRoutes = require("./Routes/marketRoutes");
+const brokerRoutes = require("./Routes/brokerRoutes");
 
 const app = express();
 
@@ -35,6 +36,8 @@ app.use(cors({
   credentials: true
 }));
 
+// CSV trade-history uploads need a larger body than the 100kb default.
+app.use("/api/brokers/import/csv", express.json({ limit: "2mb" }));
 app.use(express.json());
 
 // Throttle auth endpoints to blunt brute-force / credential-stuffing
@@ -54,6 +57,7 @@ app.use("/api/trades", tradeRoutes);
 app.use("/api/journal", journalRoutes);
 app.use("/api/metrics", metricsRoutes);
 app.use("/api/market", marketRoutes);
+app.use("/api/brokers", brokerRoutes);
 
 const dbOptions = {
     serverSelectionTimeoutMS: 5000,

@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  UserRound, Gauge, Quote, KeyRound, ShieldCheck, Download, Trash2, Save, Undo2, Globe, Lock,
+  UserRound, Gauge, Quote, KeyRound, ShieldCheck, Download, Trash2, Save, Undo2, Globe, Lock, Plug,
 } from 'lucide-react';
 import api, { errorMessage } from '../api/client';
 import { useToast } from './Toast';
+import BrokerConnections from './BrokerConnections';
 import './Settings.css';
 
 const EDITABLE = [
@@ -26,6 +27,7 @@ const SECTIONS = [
   { id: 'profile', label: 'Profile', icon: UserRound },
   { id: 'firewall', label: 'Firewall & risk', icon: Gauge },
   { id: 'cooloff', label: 'Cool-off note', icon: Quote },
+  { id: 'brokers', label: 'Connected brokers', icon: Plug },
   { id: 'security', label: 'Security', icon: KeyRound },
   { id: 'data', label: 'Data & privacy', icon: ShieldCheck },
 ];
@@ -213,6 +215,12 @@ export default function Settings({ onUserUpdated, onAccountDeleted }) {
             onChange={set('whyITrade')}
           />
           <div className="settings-count mono">{(form.whyITrade || '').length}/400</div>
+        </section>
+
+        {/* ---------- Brokers ---------- */}
+        <section id="settings-brokers" className="card settings-section">
+          <SectionHead icon={Plug} title="Connected brokers" sub="Import closed trades automatically, and optionally let the Hard Lock act on your broker account." />
+          <BrokerConnections />
         </section>
 
         {/* ---------- Security ---------- */}
