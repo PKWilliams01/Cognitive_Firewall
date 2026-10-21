@@ -24,6 +24,8 @@ const googleClient = new OAuth2Client();
 const SETTINGS_FIELDS = [
   'startingBalance', 'currency', 'maxRiskPercent', 'lockThreshold',
   'cooldownMinutes', 'strictConfluence', 'timezone', 'whyITrade',
+  'propGuardEnabled', 'propFirm', 'propAccountSize', 'propDailyLossPercent', 'propMaxLossPercent',
+  'propMaxLossType', 'propBufferPercent', 'propResetTimezone', 'propStartDate',
 ];
 
 const publicProfile = (user) => ({
@@ -74,6 +76,10 @@ function buildSettingsUpdate(body = {}) {
     range('maxRiskPercent', 0.1, 100),
     range('lockThreshold', 50, 100, { integer: true }),
     range('cooldownMinutes', 0, 1440, { integer: true }),
+    range('propAccountSize', 1, 1e9),
+    range('propDailyLossPercent', 0, 100),
+    range('propMaxLossPercent', 0, 100),
+    range('propBufferPercent', 0, 50),
   ].filter(Boolean);
 
   if (body.username !== undefined) {
@@ -89,6 +95,24 @@ function buildSettingsUpdate(body = {}) {
   if (body.timezone !== undefined) {
     if (!isValidTimeZone(body.timezone)) errors.push('invalid timezone');
     else update.timezone = body.timezone;
+  }
+  if (body.propGuardEnabled !== undefined) update.propGuardEnabled = Boolean(body.propGuardEnabled);
+  if (body.propFirm !== undefined) {
+    if (!['ftmo', 'custom'].includes(body.propFirm)) errors.push('unsupported prop firm');
+    else update.propFirm = body.propFirm;
+  }
+  if (body.propMaxLossType !== undefined) {
+    if (!['static', 'trailing'].includes(body.propMaxLossType)) errors.push('propMaxLossType must be static or trailing');
+    else update.propMaxLossType = body.propMaxLossType;
+  }
+  if (body.propResetTimezone !== undefined) {
+    if (!isValidTimeZone(body.propResetTimezone)) errors.push('invalid prop reset timezone');
+    else update.propResetTimezone = body.propResetTimezone;
+  }
+  if (body.propStartDate !== undefined) {
+    const d = body.propStartDate ? new Date(body.propStartDate) : null;
+    if (d && !Number.isFinite(d.getTime())) errors.push('invalid challenge start date');
+    else update.propStartDate = d;
   }
   if (body.whyITrade !== undefined) {
     const note = String(body.whyITrade);
@@ -246,6 +270,19 @@ function loosenedFields(current, update) {
   }
   if (update.strictConfluence === false && current.strictConfluence !== false) loosened.push('strict mode');
   if (update.timezone !== undefined && update.timezone !== current.timezone) loosened.push('timezone');
+  // Prop guard: anything that widens the allowance or moves the goalposts.
+  const propOn = current.propGuardEnabled;
+  if (propOn && update.propGuardEnabled === false) loosened.push('prop guard');
+  if (propOn) {
+    if (update.propDailyLossPercent !== undefined && num(update.propDailyLossPercent) > num(current.propDailyLossPercent)) loosened.push('prop daily loss');
+    if (update.propMaxLossPercent !== undefined && num(update.propMaxLossPercent) > num(current.propMaxLossPercent)) loosened.push('prop max loss');
+    if (update.propBufferPercent !== undefined && num(update.propBufferPercent) < num(current.propBufferPercent)) loosened.push('prop buffer');
+    if (update.propAccountSize !== undefined && num(update.propAccountSize) !== num(current.propAccountSize)) loosened.push('prop account size');
+    if (update.propMaxLossType === 'static' && current.propMaxLossType === 'trailing') loosened.push('prop max-loss type');
+    if (update.propResetTimezone !== undefined && update.propResetTimezone !== current.propResetTimezone) loosened.push('prop reset time');
+    if (update.propFirm !== undefined && update.propFirm !== current.propFirm) loosened.push('prop firm');
+    if (update.propStartDate !== undefined && String(new Date(update.propStartDate)) !== String(current.propStartDate)) loosened.push('challenge start');
+  }
   if (update.tradingPlanRules !== undefined) {
     const next = new Set(update.tradingPlanRules);
     if ((current.tradingPlanRules || []).some((r) => !next.has(r))) loosened.push('trading rules');
@@ -258,6 +295,9 @@ async function rejectIfLoosenedWhileLocked(user, update, res) {
   if (!loosened.length) return false;
   const state = await firewallState(user);
   if (!state.isLocked) return false;
+  // A breached max loss means the account is gone. Starting a new challenge
+  // (fresh start date, nothing else loosened) is the legitimate way out.
+  if (state.lockReason === 'prop_max' && loosened.every((f) => f === 'challenge start')) return false;
   res.status(423).json({
     code: 'locked_settings',
     fields: loosened,

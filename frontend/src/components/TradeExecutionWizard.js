@@ -39,6 +39,12 @@ const slide = {
   exit: { opacity: 0, x: -24, transition: { duration: 0.18 } },
 };
 
+const LOCK_COPY = {
+  daily_limit: ['Daily limit reached', 'You’ve used every trade your plan allows today.'],
+  prop_daily: ['Daily loss guard engaged', 'Another loss could breach your prop firm’s daily limit. Locked until the daily reset.'],
+  prop_max: ['Account guard engaged', 'You’re too close to the max-loss floor. Trading is locked for this challenge.'],
+};
+
 export default function TradeExecutionWizard({ user, firewall, onClose, onTradeSuccess, onLocked }) {
   const toast = useToast();
   const [phase, setPhase] = useState('PRE_FLIGHT');
@@ -223,8 +229,8 @@ export default function TradeExecutionWizard({ user, firewall, onClose, onTradeS
                 <div className="wiz-locked" role="alert">
                   <Lock size={20} />
                   <div>
-                    <strong>{firewall?.lockReason === 'daily_limit' ? 'Daily limit reached' : 'Hard Lock engaged'}</strong>
-                    <p>{firewall?.lockReason === 'daily_limit' ? 'You’ve used every trade your plan allows today.' : 'Revenge risk is critical. The server will refuse new trades until you’ve cooled off.'}</p>
+                    <strong>{LOCK_COPY[firewall?.lockReason]?.[0] || 'Hard Lock engaged'}</strong>
+                    <p>{LOCK_COPY[firewall?.lockReason]?.[1] || 'Revenge risk is critical. The server will refuse new trades until you’ve cooled off.'}</p>
                   </div>
                 </div>
               ) : (

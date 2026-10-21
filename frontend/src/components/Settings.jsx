@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  UserRound, Gauge, Quote, KeyRound, ShieldCheck, Download, Trash2, Save, Undo2, Globe, Lock, Plug,
+  UserRound, Gauge, Quote, KeyRound, ShieldCheck, Download, Trash2, Save, Undo2, Globe, Lock, Plug, ShieldHalf, RotateCcw,
 } from 'lucide-react';
 import api, { errorMessage } from '../api/client';
 import { useToast } from './Toast';
@@ -11,7 +11,18 @@ import './Settings.css';
 const EDITABLE = [
   'username', 'startingBalance', 'currency', 'plannedDailyLimit', 'maxRiskPercent',
   'lockThreshold', 'cooldownMinutes', 'strictConfluence', 'timezone', 'whyITrade',
+  'propGuardEnabled', 'propFirm', 'propAccountSize', 'propDailyLossPercent', 'propMaxLossPercent',
+  'propMaxLossType', 'propBufferPercent', 'propResetTimezone', 'propStartDate',
 ];
+
+// Prop-firm presets; mirrors Backend/Services/propGuard.js. Values stay editable.
+const PROP_PRESETS = {
+  ftmo: { propDailyLossPercent: 5, propMaxLossPercent: 10, propMaxLossType: 'static', propResetTimezone: 'Europe/Prague' },
+  custom: {},
+};
+
+// Date inputs work in YYYY-MM-DD; the API stores a full timestamp.
+const normalise = (p) => ({ ...p, propStartDate: p?.propStartDate ? String(p.propStartDate).slice(0, 10) : '' });
 
 const CURRENCIES = ['USD', 'GBP', 'EUR', 'JPY', 'AUD', 'CAD', 'CHF'];
 const COOLDOWNS = [
@@ -26,6 +37,7 @@ const COOLDOWNS = [
 const SECTIONS = [
   { id: 'profile', label: 'Profile', icon: UserRound },
   { id: 'firewall', label: 'Firewall & risk', icon: Gauge },
+  { id: 'prop', label: 'Prop-firm guard', icon: ShieldHalf },
   { id: 'cooloff', label: 'Cool-off note', icon: Quote },
   { id: 'brokers', label: 'Connected brokers', icon: Plug },
   { id: 'security', label: 'Security', icon: KeyRound },
@@ -55,7 +67,7 @@ export default function Settings({ onUserUpdated, onAccountDeleted }) {
   useEffect(() => {
     let alive = true;
     api.get('/api/users/me')
-      .then((res) => { if (alive) { setProfile(res.data); setForm(pick(res.data)); } })
+      .then((res) => { if (alive) { const p = normalise(res.data); setProfile(p); setForm(pick(p)); } })
       .catch((err) => alive && setLoadError(errorMessage(err, 'Could not load your settings.')));
     return () => { alive = false; };
   }, []);
@@ -76,8 +88,9 @@ export default function Settings({ onUserUpdated, onAccountDeleted }) {
     setSaving(true);
     try {
       const res = await api.patch('/api/users/me', changed);
-      setProfile(res.data);
-      setForm(pick(res.data));
+      const p = normalise(res.data);
+      setProfile(p);
+      setForm(pick(p));
       onUserUpdated?.(res.data);
       toast.success('Settings saved. Your firewall is using the new limits.');
     } catch (err) {
@@ -203,6 +216,74 @@ export default function Settings({ onUserUpdated, onAccountDeleted }) {
           </div>
         </section>
 
+        {/* ---------- Prop-firm guard ---------- */}
+        <section id="settings-prop" className="card settings-section">
+          <SectionHead icon={ShieldHalf} title="Prop-firm guard" sub="Locks you out before a challenge or funded account breaches its loss rules." />
+          <Toggle
+            checked={Boolean(form.propGuardEnabled)}
+            onChange={set('propGuardEnabled')}
+            title="Protect a prop-firm account"
+            desc="Uses your imported trades to track the daily and max-loss rules, and locks execution a safety buffer before either is hit."
+          />
+          {form.propGuardEnabled && (
+            <>
+              <div className="settings-grid">
+                <Field label="Firm">
+                  <select
+                    className="input"
+                    value={form.propFirm}
+                    onChange={(e) => setForm((f) => ({ ...f, propFirm: e.target.value, ...PROP_PRESETS[e.target.value] }))}
+                  >
+                    <option value="ftmo">FTMO</option>
+                    <option value="custom">Other firm (custom rules)</option>
+                  </select>
+                </Field>
+                <Field label="Account size" hint="The challenge or funded balance you started with.">
+                  <input className="input mono" type="number" min="1" step="1000" value={form.propAccountSize} onChange={set('propAccountSize')} />
+                </Field>
+                <Field label="Max daily loss (%)" hint="Of the account size.">
+                  <input className="input mono" type="number" min="0" max="100" step="0.5" value={form.propDailyLossPercent} onChange={set('propDailyLossPercent')} />
+                </Field>
+                <Field label="Max overall loss (%)">
+                  <div className="input-group">
+                    <input className="input mono" type="number" min="0" max="100" step="0.5" value={form.propMaxLossPercent} onChange={set('propMaxLossPercent')} aria-label="Max overall loss percent" />
+                    <select className="input input-addon" value={form.propMaxLossType} onChange={set('propMaxLossType')} aria-label="Max loss type">
+                      <option value="static">Static</option>
+                      <option value="trailing">Trailing</option>
+                    </select>
+                  </div>
+                </Field>
+                <Field label="Safety buffer (%)" hint="Lock this far short of each limit. Covers floating losses we can't see.">
+                  <input className="input mono" type="number" min="0" max="50" step="0.25" value={form.propBufferPercent} onChange={set('propBufferPercent')} />
+                </Field>
+                <Field label="Daily reset timezone" hint="When the firm's trading day rolls over.">
+                  <select className="input" value={form.propResetTimezone} onChange={set('propResetTimezone')}>
+                    {allTimeZones().map((z) => <option key={z} value={z}>{z.replace(/_/g, ' ')}</option>)}
+                  </select>
+                </Field>
+                <Field label="Challenge start" hint="Only trades closed from this date count.">
+                  <input className="input mono" type="date" value={form.propStartDate} onChange={set('propStartDate')} />
+                </Field>
+              </div>
+              {form.propFirm !== 'custom' && (
+                <p className="settings-hint">FTMO defaults are filled in. Check them against your account's objectives page, because firms change rules between programmes.</p>
+              )}
+              <div className="settings-summary">
+                <ShieldHalf size={15} />
+                <span>
+                  Locks after <strong>{fmtAmount(form.propAccountSize * (form.propDailyLossPercent - form.propBufferPercent) / 100)}</strong> lost in a day
+                  or <strong>{fmtAmount(form.propAccountSize * (form.propMaxLossPercent - form.propBufferPercent) / 100)}</strong> overall ({form.propMaxLossType}).
+                  Pre-flight also refuses any trade whose risk wouldn't fit in the room left.
+                </span>
+              </div>
+              <div className="settings-row">
+                <span className="settings-hint" style={{ margin: 0 }}>Passed, failed or on a new account? Reset the tracking from today.</span>
+                <StartChallenge onDone={(p) => { const n = normalise(p); setProfile(n); setForm(pick(n)); onUserUpdated?.(p); }} />
+              </div>
+            </>
+          )}
+        </section>
+
         {/* ---------- Cool-off note ---------- */}
         <section id="settings-cooloff" className="card settings-section">
           <SectionHead icon={Quote} title="Cool-off note" sub="Shown to you when the Hard Lock engages. Write it while you're calm." />
@@ -263,6 +344,30 @@ export default function Settings({ onUserUpdated, onAccountDeleted }) {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+const fmtAmount = (n) => `$${Math.max(0, Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+
+function StartChallenge({ onDone }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const start = async () => {
+    setBusy(true);
+    try {
+      const res = await api.patch('/api/users/me', { propStartDate: new Date().toISOString() });
+      onDone(res.data);
+      toast.success('New challenge started. Tracking resets from now.');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Could not start a new challenge'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button className="btn btn-ghost" onClick={start} disabled={busy}>
+      <RotateCcw size={15} /> {busy ? 'Starting…' : 'Start new challenge'}
+    </button>
   );
 }
 

@@ -8,6 +8,7 @@ import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, ReferenceL
 import RiskMeter, { LOCK_THRESHOLD } from './RiskMeter';
 import useCountUp from './useCountUp';
 import DisciplineStreak from './DisciplineStreak';
+import PropGuardPanel from './PropGuardPanel';
 import './Dashboard.css';
 
 const toNumber = (v) => {
@@ -37,6 +38,8 @@ const relativeTime = (value) => {
 
 const money = (n) =>
   `${n < 0 ? '−' : n > 0 ? '+' : ''}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const amount = (n) => `$${Math.abs(Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 
 // Insight copy — logic unchanged from the original panel.
 function generateStatisticalInsight(hasTrades, trades) {
@@ -110,7 +113,11 @@ export default function Dashboard({ user, trades = [], metrics, onExecute }) {
     ? new Date(lockedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : null;
 
-  const state = dailyLimitLock
+  const pg = metrics?.propGuard;
+  const propLock = locked && (lockReason === 'prop_daily' || lockReason === 'prop_max');
+  const state = propLock
+    ? { icon: Lock, title: lockReason === 'prop_max' ? 'Account guard engaged' : 'Daily loss guard engaged', copy: lockReason === 'prop_max' ? `Within ${amount(pg?.buffer)} of your ${pg?.firmLabel} max-loss floor. Trading is locked to keep the account alive.` : `${amount(pg?.dailyUsed)} of today's ${amount(pg?.dailyLimit)} ${pg?.firmLabel} loss allowance used. Locked${untilLabel ? ` until ${untilLabel}` : ' until the daily reset'}.`, tone: 'down' }
+    : dailyLimitLock
     ? { icon: Lock, title: 'Daily limit reached', copy: `You've taken all ${dailyLimit ? `${dailyLimit} ` : ''}trades your plan allows today. The firewall reopens tomorrow — protect today's result.`, tone: 'down' }
     : locked
       ? { icon: Lock, title: 'Hard Lock engaged', copy: untilLabel ? `Revenge risk is critical. Execution is locked until ${untilLabel} — step away and reset.` : 'Revenge risk is critical. Execution is locked — step away, reset, and come back to your plan.', tone: 'down' }
@@ -188,6 +195,12 @@ export default function Dashboard({ user, trades = [], metrics, onExecute }) {
           tone={!hasTrades ? 'neutral' : winRate >= 50 ? 'up' : 'warn'}
         />
       </div>
+
+      {pg?.enabled && (
+        <motion.div variants={rise} initial="hidden" animate="show" custom={6.1}>
+          <PropGuardPanel guard={pg} />
+        </motion.div>
+      )}
 
       {/* ---- Streak & discipline calendar ---- */}
       {hasTrades && (

@@ -10,17 +10,8 @@ const parseDate = v => {
   return Number.isFinite(d?.getTime()) ? d : null;
 };
 
-// Calendar day (YYYY-MM-DD) of a date in the user's timezone. The server runs
-// in UTC, so "today" must be resolved against the trader's own clock.
-const dayKey = (date, timeZone) => {
-  try {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(date);
-  } catch {
-    return date.toISOString().slice(0, 10);
-  }
-};
+const { dayKey } = require('./dayKey');
+const propGuard = require('./propGuard');
 
 // Heat Accumulation constants (see dissertation §3.4 / §5.3)
 const P = 30;            // base penalty per loss
@@ -30,6 +21,20 @@ const RAPID_MULTIPLIER = 2.5;
 const WIN_COOLING = 10;
 
 exports.dayKey = dayKey;
+
+// First instant of the next calendar day in a timezone (to the minute).
+function nextDayStart(now, timeZone) {
+  const today = dayKey(now, timeZone);
+  let lo = now.getTime();
+  let hi = lo + 50 * 60 * 60 * 1000;
+  while (hi - lo > 60 * 1000) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (dayKey(new Date(mid), timeZone) === today) lo = mid; else hi = mid;
+  }
+  // Day boundaries fall on whole minutes, and hi is within a minute past one.
+  return new Date(Math.floor(hi / 60000) * 60000);
+}
+exports.nextDayStart = nextDayStart;
 
 exports.generateUserMetrics = (user, trades = [], now = new Date()) => {
   const hasTrades = trades.length > 0;
@@ -152,13 +157,19 @@ exports.generateUserMetrics = (user, trades = [], now = new Date()) => {
     else lockedUntil = until.toISOString();
   }
   const dailyLocked = tradesRemaining <= 0;
-  const isLocked = revengeLocked || dailyLocked;
-  const lockReason = revengeLocked ? 'revenge' : dailyLocked ? 'daily_limit' : null;
+
+  // Prop-firm guard outranks the behavioural locks: breaching it fails the account.
+  const prop = propGuard.evaluate(user, trades, now);
+  const propLocked = Boolean(prop.lockReason);
+  const isLocked = propLocked || revengeLocked || dailyLocked;
+  const lockReason = propLocked ? prop.lockReason : revengeLocked ? 'revenge' : dailyLocked ? 'daily_limit' : null;
+  if (prop.lockReason === 'prop_daily') lockedUntil = nextDayStart(now, prop.resetTimezone).toISOString();
+  else if (prop.lockReason === 'prop_max') lockedUntil = null;
 
   // ==========================================
   // D. CONTEXTUAL BEHAVIOURAL WARNINGS
   // ==========================================
-  const warnings = [];
+  const warnings = [...(prop.warnings || [])];
   if (hasTradesToday && !isLocked) {
     const lastTrade = [...todayTrades].sort(
       (a, b) => (parseDate(b.exitTime)?.getTime() || 0) - (parseDate(a.exitTime)?.getTime() || 0)
@@ -226,5 +237,6 @@ exports.generateUserMetrics = (user, trades = [], now = new Date()) => {
     dailyLimit,
     maxRiskPercent,
     warnings,
+    propGuard: prop.enabled ? { ...prop, warnings: undefined } : { enabled: false },
   };
 };
