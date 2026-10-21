@@ -35,26 +35,32 @@ export const TOUR_STEPS = [
     body: 'Link OANDA, Alpaca or Binance to import trades automatically. For FTMO and other prop firms, upload your MetaTrader statement. You can also let the Hard Lock act on the broker account.',
   },
   {
+    view: 'settings',
+    target: '#settings-prop',
+    title: '5. Trading a prop-firm account? Turn on the guard',
+    body: "Pick FTMO or enter your firm's rules. The guard tracks the daily and max-loss limits from your imported trades, locks you out a safety buffer before either is hit, and refuses trades too big for the room left.",
+  },
+  {
     target: '.shell-execute',
-    title: '5. Run a pre-flight before every trade',
+    title: '6. Run a pre-flight before every trade',
     body: 'Press Execute trade (or E). Pick the instrument, confirm each rule, set your risk. The server approves or blocks the trade before you place it.',
   },
   {
     view: 'dashboard',
     target: '.dash-hero-meter',
-    title: '6. Watch your revenge risk',
+    title: '7. Watch your revenge risk',
     body: 'This gauge rises with rapid trades after a loss and with broken rules. It falls when you trade calmly. Cross your threshold and execution locks. No overrides.',
   },
   {
     view: 'dashboard',
     target: '.dash-kpis',
-    title: '7. Read your discipline numbers',
+    title: '8. Read your discipline numbers',
     body: 'Plan adherence, impulsivity versus your daily limit, and win rate. Your streak calendar below shows clean days in a row.',
   },
   {
     view: 'journal',
     target: '.jr',
-    title: '8. Review and reflect',
+    title: '9. Review and reflect',
     body: 'Every trade lands in the Journal. Imported trades wait for your review: did you follow the plan, and how did you feel? Log mood check-ins before and after sessions.',
   },
   {
@@ -85,11 +91,20 @@ export default function Tour({ onNavigate, onClose, onOpenManual, initialStep = 
   useLayoutEffect(() => {
     setRect(null);
     if (!s.target) return undefined;
-    const t = setTimeout(() => {
+    // The page transition can take a while, so keep looking for the target
+    // (up to ~3s) before falling back to a centred card.
+    let t;
+    let tries = 0;
+    const find = () => {
       const el = document.querySelector(s.target);
-      if (el && el.getBoundingClientRect().width) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      setTimeout(measure, 350);
-    }, 380);
+      if (el && el.getBoundingClientRect().width) {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        t = setTimeout(measure, 350);
+      } else if (tries++ < 12) {
+        t = setTimeout(find, 250);
+      }
+    };
+    t = setTimeout(find, 300);
     window.addEventListener('resize', measure);
     window.addEventListener('scroll', measure, true);
     return () => {
@@ -112,13 +127,15 @@ export default function Tour({ onNavigate, onClose, onOpenManual, initialStep = 
   }, [step, last, go, onClose]);
 
   // Card goes below the spotlight if there's room, otherwise above, otherwise centred.
+  // null = centred. (Centring is done by a flex wrapper, not a CSS
+  // transform, because framer-motion's y animation overwrites transform.)
   const cardStyle = (() => {
-    if (!rect) return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
+    if (!rect) return null;
     const w = Math.min(380, window.innerWidth - 32);
     const left = Math.max(16, Math.min(rect.left, window.innerWidth - w - 16));
     if (window.innerHeight - (rect.top + rect.height) > 260) return { top: rect.top + rect.height + 12, left, width: w };
     if (rect.top > 260) return { bottom: window.innerHeight - rect.top + 12, left, width: w };
-    return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
+    return null;
   })();
 
   return (
@@ -129,11 +146,12 @@ export default function Tour({ onNavigate, onClose, onOpenManual, initialStep = 
         <div className="tour-dim" />
       )}
 
+      <div className={cardStyle ? undefined : 'tour-center'}>
       <AnimatePresence mode="wait">
         <motion.div
           key={step}
-          className="tour-card card"
-          style={cardStyle}
+          className={`tour-card card ${cardStyle ? '' : 'is-centred'}`}
+          style={cardStyle || undefined}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
@@ -186,6 +204,7 @@ export default function Tour({ onNavigate, onClose, onOpenManual, initialStep = 
           </div>
         </motion.div>
       </AnimatePresence>
+      </div>
     </div>
   );
 }
