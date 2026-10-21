@@ -5,9 +5,14 @@ const metricsService = require("../Services/metricsService");
 const { protect } = require('../Middleware/authMiddleware');
 const { firewallState } = require("../Services/firewall");
 const { reconcileLocksQuietly } = require("../Services/brokers");
+const propGuard = require("../Services/propGuard");
 
 const lockMessage = (state) =>
-    state.lockReason === 'daily_limit'
+    state.lockReason === 'prop_max'
+        ? `${state.propGuard?.firmLabel || 'Prop'} max-loss guard engaged: the account is within ${state.propGuard?.buffer} of its floor (${state.propGuard?.floor}). Trading is locked for this challenge.`
+        : state.lockReason === 'prop_daily'
+        ? `${state.propGuard?.firmLabel || 'Prop'} daily-loss guard engaged: ${state.propGuard?.dailyUsed} of ${state.propGuard?.dailyLimit} lost today. Locked until the daily reset.`
+        : state.lockReason === 'daily_limit'
         ? `Daily limit reached (${state.dailyLimit} trades). The firewall reopens tomorrow.`
         : state.lockedUntil
             ? `Hard Lock engaged — revenge risk ${state.revengeRisk}%. Cool-off until ${state.lockedUntil}.`
@@ -37,6 +42,18 @@ router.post("/preflight", protect, async (req, res) => {
                 code: 'risk_cap',
                 message: `Risk ${risk}% exceeds your ${state.maxRiskPercent}% per-trade cap.`,
             });
+        }
+
+        // Prop guard: the worst case of this trade must fit in today's room.
+        if (state.propGuard?.enabled) {
+            const riskAmount = state.propGuard.balance * risk / 100;
+            const { ok, room } = propGuard.roomFor(state.propGuard, riskAmount);
+            if (!ok) {
+                return res.status(422).json({
+                    code: 'prop_room',
+                    message: `Risking ${risk}% (${riskAmount.toFixed(2)}) could breach your ${state.propGuard.firmLabel} limits. Only ${room.toFixed(2)} of room left; size down to ${Math.floor((room / state.propGuard.balance) * 10000) / 100}% or less.`,
+                });
+            }
         }
 
         // [HARD] rules must always be confirmed, whatever the strict setting.

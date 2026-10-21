@@ -30,6 +30,19 @@ const UserSchema = new mongoose.Schema({
   timezone: { type: String, default: 'UTC' },
   // Personal reminder shown on the cool-off screen.
   whyITrade: { type: String, default: '', maxlength: 400 },
+
+  // --- Prop-firm rule guard (locks before a daily/max-loss breach) ---
+  propGuardEnabled: { type: Boolean, default: false },
+  propFirm: { type: String, enum: ['ftmo', 'custom'], default: 'ftmo' },
+  propAccountSize: { type: Number, default: 100000, min: 1 },
+  propDailyLossPercent: { type: Number, default: 5, min: 0, max: 100 },
+  propMaxLossPercent: { type: Number, default: 10, min: 0, max: 100 },
+  propMaxLossType: { type: String, enum: ['static', 'trailing'], default: 'static' },
+  // Lock this far short of the real limit: closed P/L can't see floating losses.
+  propBufferPercent: { type: Number, default: 1, min: 0, max: 50 },
+  propResetTimezone: { type: String, default: 'Europe/Prague' },
+  // Only trades closed on/after this date count toward the challenge.
+  propStartDate: { type: Date },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', UserSchema);

@@ -27,12 +27,18 @@ export const formatRemaining = (ms) => {
   return h ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
 };
 
+const fmt = (n) => `$${Math.abs(Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+
 export default function CooldownScreen({ firewall, user, onClose, onCheckIn, onUnlock }) {
   const reduceMotion = useReducedMotion();
   const [now, setNow] = useState(Date.now());
   const [breath, setBreath] = useState(0);
 
   const dailyLimit = firewall?.lockReason === 'daily_limit';
+  const propDaily = firewall?.lockReason === 'prop_daily';
+  const propMax = firewall?.lockReason === 'prop_max';
+  const pg = firewall?.propGuard || {};
+  const firm = pg.firmLabel || 'prop firm';
   const target = firewall?.lockedUntil ? new Date(firewall.lockedUntil) : nextMidnight(now);
   const remaining = target.getTime() - now;
 
@@ -73,21 +79,30 @@ export default function CooldownScreen({ firewall, user, onClose, onCheckIn, onU
       <div className="cool-inner">
         <motion.div className="cool-badge" initial={{ y: -10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }}>
           {dailyLimit ? <Flag size={14} /> : <Lock size={14} />}
-          {dailyLimit ? 'SESSION COMPLETE' : 'HARD LOCK ENGAGED'}
+          {dailyLimit ? 'SESSION COMPLETE' : propMax ? 'ACCOUNT GUARD ENGAGED' : propDaily ? 'DAILY LOSS GUARD' : 'HARD LOCK ENGAGED'}
         </motion.div>
 
-        <h1 id="cool-title">{dailyLimit ? 'That’s your plan done for today.' : 'Step away. This is the trade not to take.'}</h1>
+        <h1 id="cool-title">
+          {dailyLimit ? 'That’s your plan done for today.'
+            : propMax ? 'Your account is one bad trade from failing.'
+            : propDaily ? 'You’ve protected today’s limit. Stop here.'
+            : 'Step away. This is the trade not to take.'}
+        </h1>
         <p className="cool-lead">
-          {dailyLimit
+          {propMax
+            ? `Balance ${fmt(pg.balance)} is within ${fmt(pg.buffer)} of the ${firm} max-loss floor (${fmt(pg.floor)}). The guard has locked trading so the account survives. Start a new challenge in Settings when you’re ready.`
+            : propDaily
+            ? `${fmt(pg.dailyUsed)} of today’s ${fmt(pg.dailyLimit)} ${firm} loss allowance is gone. One more loss could breach the rule and fail the account. The guard reopens at the daily reset.`
+            : dailyLimit
             ? `You’ve taken all ${firewall?.dailyLimit ?? ''} trades your plan allows. Stopping here is the discipline — not a punishment.`
             : `Revenge risk hit ${firewall?.revengeRisk ?? ''}%. Your last trades look reactive, so the firewall has locked execution.`}
         </p>
 
-        <div className="cool-timer" aria-live="polite">
+        {!propMax && <div className="cool-timer" aria-live="polite">
           <Hourglass size={16} />
           <span>{firewall?.lockedUntil ? 'Unlocks in' : 'Resets at midnight —'}</span>
           <span className="mono cool-timer-value">{formatRemaining(remaining)}</span>
-        </div>
+        </div>}
 
         <div className="cool-breath">
           <motion.div
