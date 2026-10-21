@@ -20,7 +20,7 @@ test('the step list jumps straight to any step', async () => {
   render(<Tour onNavigate={() => {}} onClose={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: 'All steps' }));
   fireEvent.click(screen.getByRole('button', { name: /Review and reflect/ }));
-  expect(await screen.findByText(/STEP 9 \//)).toBeInTheDocument();
+  expect(await screen.findByText(/STEP 10 \//)).toBeInTheDocument();
 });
 
 test('finish, skip and Escape all close it', () => {
