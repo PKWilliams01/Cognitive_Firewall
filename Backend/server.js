@@ -12,6 +12,7 @@ const journalRoutes = require("./Routes/journalRoutes");
 const userRoutes = require("./Routes/userRoutes");
 const marketRoutes = require("./Routes/marketRoutes");
 const brokerRoutes = require("./Routes/brokerRoutes");
+const pushRoutes = require("./Routes/pushRoutes");
 
 const app = express();
 
@@ -58,6 +59,7 @@ app.use("/api/journal", journalRoutes);
 app.use("/api/metrics", metricsRoutes);
 app.use("/api/market", marketRoutes);
 app.use("/api/brokers", brokerRoutes);
+app.use("/api/push", pushRoutes);
 
 const dbOptions = {
     serverSelectionTimeoutMS: 5000,

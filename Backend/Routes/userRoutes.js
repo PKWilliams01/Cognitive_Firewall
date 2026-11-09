@@ -4,6 +4,7 @@ const User = require('../Models/User');
 const Trade = require('../Models/Trade');
 const JournalEntry = require('../Models/JournalEntry');
 const BrokerConnection = require('../Models/BrokerConnection');
+const PushSubscription = require('../Models/PushSubscription');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { protect } = require('../Middleware/authMiddleware');
@@ -380,6 +381,7 @@ router.delete('/me', protect, async (req, res) => {
       Trade.deleteMany({ userId: user._id }),
       JournalEntry.deleteMany({ userId: user._id }),
       BrokerConnection.deleteMany({ userId: user._id }),
+      PushSubscription.deleteMany({ userId: user._id }),
     ]);
     await User.deleteOne({ _id: user._id });
     res.json({ message: 'Account deleted' });
