@@ -43,6 +43,10 @@ const UserSchema = new mongoose.Schema({
   propResetTimezone: { type: String, default: 'Europe/Prague' },
   // Only trades closed on/after this date count toward the challenge.
   propStartDate: { type: Date },
+
+  // Last firewall level we pushed a notification for (dedupes alerts).
+  pushLevel: { type: String, enum: ['calm', 'warn', 'high', 'locked'], default: 'calm' },
+  pushLockKey: { type: String },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', UserSchema);

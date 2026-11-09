@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  UserRound, Gauge, Quote, KeyRound, ShieldCheck, Download, Trash2, Save, Undo2, Globe, Lock, Plug, ShieldHalf, RotateCcw,
+  UserRound, Gauge, Quote, KeyRound, ShieldCheck, Download, Trash2, Save, Undo2, Globe, Lock, Plug, ShieldHalf, RotateCcw, BellRing,
 } from 'lucide-react';
 import api, { errorMessage } from '../api/client';
 import { useToast } from './Toast';
 import BrokerConnections from './BrokerConnections';
+import PushSettings from './PushSettings';
 import './Settings.css';
 
 const EDITABLE = [
@@ -38,6 +39,7 @@ const SECTIONS = [
   { id: 'profile', label: 'Profile', icon: UserRound },
   { id: 'firewall', label: 'Firewall & risk', icon: Gauge },
   { id: 'prop', label: 'Prop-firm guard', icon: ShieldHalf },
+  { id: 'alerts', label: 'Alerts', icon: BellRing },
   { id: 'cooloff', label: 'Cool-off note', icon: Quote },
   { id: 'brokers', label: 'Connected brokers', icon: Plug },
   { id: 'security', label: 'Security', icon: KeyRound },
@@ -282,6 +284,12 @@ export default function Settings({ onUserUpdated, onAccountDeleted }) {
               </div>
             </>
           )}
+        </section>
+
+        {/* ---------- Push alerts ---------- */}
+        <section id="settings-alerts" className="card settings-section">
+          <SectionHead icon={BellRing} title="Alerts" sub="Get warned on your phone or desktop, even when the app is closed." />
+          <PushSettings />
         </section>
 
         {/* ---------- Cool-off note ---------- */}

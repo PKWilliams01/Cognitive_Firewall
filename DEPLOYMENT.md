@@ -106,6 +106,24 @@ which needs no configuration.
 
 Test with practice/paper/testnet keys first.
 
+## 7. Push alerts
+
+Settings → **Alerts** lets each device opt in to push notifications: tilt
+warnings, Hard Lock engaged, and firewall reopened.
+
+- No setup is needed. The backend generates its VAPID key pair on first use
+  and stores it in MongoDB (`appconfigs` collection). To manage keys yourself,
+  set `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` (and optionally `VAPID_SUBJECT`,
+  e.g. `mailto:you@example.com`) on Render. Changing keys invalidates every
+  existing subscription.
+- Push needs HTTPS and the service worker, so it works on the deployed site,
+  not in `npm start`. On iPhone/iPad (iOS 16.4+) it only works from the app
+  added to the Home Screen.
+- Alerts fire when the server recomputes the firewall state (a trade is
+  logged, a broker syncs, a statement is uploaded, or the app polls). The
+  "reopened" alert for timed cool-offs uses an in-process timer; on Render's
+  free plan the service may be asleep, so that alert can arrive late or not at all.
+
 ---
 
 ## Environment variable summary

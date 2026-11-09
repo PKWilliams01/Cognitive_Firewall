@@ -4,7 +4,7 @@
  * instantly and works when installed. API responses are NEVER cached — the
  * firewall's lock state must always come live from the server.
  */
-const VERSION = 'cf-shell-v1';
+const VERSION = 'cf-shell-v2';
 const SHELL = ['/', '/index.html', '/manifest.json', '/logo192.png', '/logo512.png', '/favicon-32.png'];
 
 self.addEventListener('install', (event) => {
@@ -55,4 +55,36 @@ self.addEventListener('fetch', (event) => {
       )
     );
   }
+});
+
+// ---- Push alerts (tilt warnings, Hard Lock, reopen) ----
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data && event.data.text() }; }
+  const title = data.title || 'Cognitive Firewall';
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || '',
+      icon: '/logo192.png',
+      badge: '/favicon-32.png',
+      tag: data.tag || 'cf',
+      renotify: true,
+      // Lock alerts stay on screen until dismissed.
+      requireInteraction: data.tag === 'cf-lock',
+      data: { url: data.url || '/' },
+    })
+  );
+});
+
+// Focus an open tab if there is one; otherwise open the app.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || '/', self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((tabs) => {
+      const tab = tabs.find((t) => new URL(t.url).origin === self.location.origin);
+      if (tab) return tab.focus().then((t) => (t && 'navigate' in t ? t.navigate(target) : t));
+      return self.clients.openWindow(target);
+    })
+  );
 });
